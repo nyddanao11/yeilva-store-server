@@ -53,13 +53,18 @@ app.post('/signin', (req, res) => {
   const { email, password } = req.body;
 
   // Check if the email exists in the 'users' table
-  db.select('email', 'password')
+  db.select('email', 'password', 'verified') // Include the 'verified' column in the query
     .from('users')
     .where('email', '=', email)
     .then((data) => {
       if (data.length === 0) {
         res.status(400).json({ error: 'Invalid credentials' }); // Return an error object
       } else {
+        // Check if the user is verified
+        if (!data[0].verified) {
+          return res.status(400).json({ error: 'Email not verified. Please check your email for verification instructions.' });
+        }
+
         // Compare the hashed password
         const isValid = bcrypt.compareSync(password, data[0].password);
         if (isValid) {
