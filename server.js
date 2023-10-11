@@ -244,12 +244,7 @@ app.post('/checkout', async (req, res) => {
 
               <p>Here are some details about your order:</p>
 
-              <ul>
-                <!-- List the items included in the order -->
-                <li> item: ${name}</li>
-                <li>quantity: ${quantity}</li>
-                <!-- Add more items as needed -->
-              </ul>
+                   ${name}
 
               <p>Total Amount: ${total}</p>
 
@@ -289,12 +284,7 @@ app.post('/checkout', async (req, res) => {
 
               <p>Here are some details about your order:</p>
 
-              <ul>
-                <!-- List the items included in the order -->
-                <li> item: ${name}</li>
-                <li>quantity: ${quantity}</li>
-                <!-- Add more items as needed -->
-              </ul>
+                   ${name}
 
               <p>Total Amount: ${total}</p>
 
