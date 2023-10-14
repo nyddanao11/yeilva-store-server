@@ -14,20 +14,20 @@ require('dotenv').config({ path: 'sendgrid.env' });
 const db = knex({
   client: 'pg',
   connection: {
-    host: '127.0.0.1',
-    port: 5432,
+    host: 'containers-us-west-193.railway.app',
+    port: 5925,
     user: 'postgres',
-    password: '!!#3AdminYel34Store',
-    database: 'yeilvastore',
+    password: 'V7WT89pgAPCjTEo9OlQC',
+    database: 'railway',
   },
 });
 
 const pool = new Pool({
-  host: '127.0.0.1',
-    port: 5432,
+  host: 'containers-us-west-193.railway.app',
+    port:  5925,
     user: 'postgres',
-    password: '!!#3AdminYel34Store',
-    database: 'yeilvastore',
+    password: 'V7WT89pgAPCjTEo9OlQC',
+    database: 'railway',
   
 });
 
@@ -116,7 +116,7 @@ app.post('/register', async (req, res) => {
     });
 
     // Craft the confirmation link
-    const verificationLink = `https://yeilvastore.com/confirm?token=${token}`;
+    const verificationLink = `https://yeilva-store.up.railway.app/confirm?token=${token}`;
 
     // Craft the confirmation email
     const msg = {
