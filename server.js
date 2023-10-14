@@ -12,7 +12,7 @@ require('dotenv').config({ path: 'sendgrid.env' });
 
 
 const db = knex({
- 
+   client: 'pg',
   connection: {
     host: 'containers-us-west-193.railway.app',
     port: 5925,
