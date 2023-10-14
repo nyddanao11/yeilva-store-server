@@ -12,7 +12,7 @@ require('dotenv').config({ path: 'sendgrid.env' });
 
 
 const db = knex({
-  client: 'pg',
+ 
   connection: {
     host: 'containers-us-west-193.railway.app',
     port: 5925,
@@ -377,7 +377,7 @@ app.get('/api/user', async (req, res) => {
 
 
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.SERVER_PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
