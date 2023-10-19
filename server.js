@@ -142,17 +142,22 @@ app.post('/register', async (req, res) => {
 });
 
 
-// Endpoint for handling email confirmation
+
+
+
 app.get('/confirm', async (req, res) => {
   const { token } = req.query;
 
   try {
+    console.log('Received confirmation token:', token);
+
     // Check if the token exists and is not expired in the PostgreSQL database
     const result = await db('users')
       .where({ token: token })
       .andWhere('timestamp', '>', new Date(Date.now() - (24 * 60 * 60 * 1000))) // Check tokens valid for 24 hours
 
     if (result.length === 0) {
+      console.log('Invalid or expired token:', token);
       return res.status(400).json({ error: 'Invalid or expired token' });
     }
 
@@ -164,15 +169,13 @@ app.get('/confirm', async (req, res) => {
 
     // Optionally, you can delete the token from the database to prevent reuse
 
+    console.log('Email verified successfully for token:', token);
     res.json({ message: 'Email verified successfully' });
   } catch (error) {
     console.error('Error during email confirmation', error);
     res.status(500).json('An error occurred during email confirmation');
   }
 });
-
-
-
 
 
 app.post('/checkout', async (req, res) => {
