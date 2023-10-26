@@ -4,7 +4,6 @@ const bcrypt = require('bcrypt-nodejs');
 const crypto =require('crypto');
 const cors = require('cors');
 const knex = require('knex');
-const nodemailer = require('nodemailer');
 const sgMail = require('@sendgrid/mail');
 const { Pool } = require('pg');
 require('dotenv').config({ path: 'sendgrid.env' });
