@@ -143,7 +143,7 @@ app.post('/register', async (req, res) => {
 
 
 
-app.get('/confirm', async (req, res) => {
+  app.get('/api/confirm', async (req, res) => {
   const { token } = req.query;
 
   try {
