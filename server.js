@@ -33,7 +33,7 @@ const db = knex({
   client: 'pg',
   connection: {
     host: 'monorail.proxy.rlwy.net',
-    port: 13378,
+    port: 5432,
     user: 'postgres',
     password:'feE*G35bCcD3BD*ebBCEBEEBd-aEcbcG',
     database: 'railway',
@@ -42,7 +42,7 @@ const db = knex({
 
 const pool = new Pool({
    host: 'monorail.proxy.rlwy.net',
-    port: 13378,
+    port: 5432,
     user: 'postgres',
     password:'feE*G35bCcD3BD*ebBCEBEEBd-aEcbcG',
     database: 'railway',
