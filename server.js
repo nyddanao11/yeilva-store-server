@@ -77,7 +77,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 
 app.use(cors({ 
-  origin: 'yeilva-store.up.railway.app', 
+  origin: 'https://yeilva-store.up.railway.app/', 
   credentials: true,
 }));
 
@@ -261,7 +261,7 @@ const hash = bcrypt.hashSync(password, salt);
     });
 
     // Craft the confirmation link
-    const verificationLink = `https://yeilvastore.com/confirm?token=${token}`;
+    const verificationLink = `https://yeilva-store.up.railway.app/confirm?token=${token}`;
 
     // Craft the confirmation email
     const msg = {
@@ -413,7 +413,7 @@ app.post('/checkout', async (req, res) => {
        
       // Send an email with the checkout information to the admin
 const checkoutInfoEmailToAdmin = {
-  to: 'bonz.ba50@gmail.com',
+  to: 'ayeilva@yahoo.com',
   from: 'yeilvastore@gmail.com',
   subject: 'New Checkout Information',
   html: `
@@ -736,7 +736,7 @@ async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, 
   const sendGridData = {
     personalizations: [
       {
-        to: [{ email: 'bonz.ba50@gmail.com' }],
+        to: [{ email: 'ayeilva@yahoo.com' }],
         subject: 'New Loan Application',
       },
     ],
@@ -966,7 +966,7 @@ async function isValidCredentials(username, password) {
 
 
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:3000');
+  res.header('Access-Control-Allow-Origin', 'https://yeilva-store.up.railway.app/');
   res.header('Access-Control-Allow-Credentials', true);
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
