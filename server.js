@@ -32,7 +32,7 @@ require('dotenv').config({ path: 's3.env' });
 const db = knex({
   client: 'pg',
   connection: {
-    host: 'viaduct.proxy.rlwy.net',
+    host: 'viaduct.proxy.rlwy.net:13031',
     port: 13031,
     user: 'postgres',
     password:'DfDE1CFA4F1ad4b-B5FEB*fD*fEeb4fC',
@@ -41,7 +41,7 @@ const db = knex({
 });
 
 const pool = new Pool({
-   host: 'viaduct.proxy.rlwy.net',
+   host: 'viaduct.proxy.rlwy.net:13031',
     port: 13031,
     user: 'postgres',
     password:'DfDE1CFA4F1ad4b-B5FEB*fD*fEeb4fC',
