@@ -32,19 +32,19 @@ require('dotenv').config({ path: 's3.env' });
 const db = knex({
   client: 'pg',
   connection: {
-    host: 'roundhouse.proxy.rlwy.net',
-    port: 29281,
+    host: 'monorail.proxy.rlwy.net',
+    port: 13378,
     user: 'postgres',
-    password:'B*FD3DBc*54E5aEEfG4beCGaG*FFcg12',
+    password:'feE*G35bCcD3BD*ebBCEBEEBd-aEcbcG',
     database: 'railway',
   },
 });
 
 const pool = new Pool({
-   host: 'roundhouse.proxy.rlwy.net',
-    port: 29281,
+   host: 'monorail.proxy.rlwy.net',
+    port: 13378,
     user: 'postgres',
-    password:'B*FD3DBc*54E5aEEfG4beCGaG*FFcg12',
+    password:'feE*G35bCcD3BD*ebBCEBEEBd-aEcbcG',
     database: 'railway',
   
 });
