@@ -33,18 +33,18 @@ const db = knex({
   client: 'pg',
   connection: {
     host: 'roundhouse.proxy.rlwy.net',
-    port: 34919,
+    port: 29281,
     user: 'postgres',
-    password:'2bb2gbGEgBde16fDF2f1Ac534151cg3a',
+    password:'B*FD3DBc*54E5aEEfG4beCGaG*FFcg12',
     database: 'railway',
   },
 });
 
 const pool = new Pool({
    host: 'roundhouse.proxy.rlwy.net',
-    port: 34919,
+    port: 29281,
     user: 'postgres',
-    password:'2bb2gbGEgBde16fDF2f1Ac534151cg3a',
+    password:'B*FD3DBc*54E5aEEfG4beCGaG*FFcg12',
     database: 'railway',
   
 });
