@@ -33,18 +33,18 @@ const db = knex({
   client: 'pg',
   connection: {
     host: 'viaduct.proxy.rlwy.net',
-    port: 13031,
+    port: 23175,
     user: 'postgres',
-    password:'DfDE1CFA4F1ad4b-B5FEB*fD*fEeb4fC',
+    password:'2BE2-1Be243GFFbda*DBaaFFbgDg25b6',
     database: 'railway',
   },
 });
 
 const pool = new Pool({
    host: 'viaduct.proxy.rlwy.net',
-    port: 13031,
+    port: 23175,
     user: 'postgres',
-    password:'DfDE1CFA4F1ad4b-B5FEB*fD*fEeb4fC',
+    password:'2BE2-1Be243GFFbda*DBaaFFbgDg25b6',
     database: 'railway',
   
 });
