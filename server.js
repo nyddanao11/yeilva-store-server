@@ -36,7 +36,7 @@ const db = knex({
     port: 23175,
     user: 'postgres',
     password:'2BE2-1Be243GFFbda*DBaaFFbgDg25b6',
-    database: '/var/lib/postgresql/data/pgdata',
+    database: 'railway',
   },
 });
 
@@ -45,7 +45,7 @@ const pool = new Pool({
     port: 23175,
     user: 'postgres',
     password:'2BE2-1Be243GFFbda*DBaaFFbgDg25b6',
-    database: '/var/lib/postgresql/data/pgdata',
+    database: 'railway',
   
 });
 
