@@ -77,7 +77,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 
 app.use(cors({ 
-  origin: 'https://yeilva-store.up.railway.app/', 
+  origin: 'https://yeilva-store.up.railway.app', 
   credentials: true,
 }));
 
@@ -966,7 +966,7 @@ async function isValidCredentials(username, password) {
 
 
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://yeilva-store.up.railway.app/');
+  res.header('Access-Control-Allow-Origin', 'https://yeilva-store.up.railway.app');
   res.header('Access-Control-Allow-Credentials', true);
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
