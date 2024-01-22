@@ -503,6 +503,194 @@ app.post('/create-order', async (req, res) => {
 
 
 
+app.post('/installmentusers', async (req, res) => {
+  const {
+    firstname,
+    lastname, 
+    email,
+    address,
+    province,
+    phone,
+    name,
+    quantity,
+    total,
+     paymentOption, 
+  } = req.body;
+
+   const user = await pool.query('SELECT status FROM installmentusers WHERE email = $1 ORDER BY checkout_date DESC LIMIT 1', [email]);
+
+    if (user.rows.length > 0) {
+      const lastStatus = user.rows[0].status;
+      if (lastStatus === 'pending') {
+        return res.status(400).json({ error: 'You cannot submit the form while your application is pending.' });
+      }
+    }
+
+  try {
+    // Start a database transaction
+    await db.transaction(async (trx) => {
+      // Generate the order number
+      const orderNumber = generateOrderNumber();
+
+      // Insert data into the 'checkout' table, including the order number and new fields
+      const insertedOrder = await trx('installmentusers')
+        .insert({
+          firstname, 
+          lastname, 
+          email,
+          address,
+          province,
+          phone,
+          checkout_date: new Date(),
+          name,
+          quantity,
+          total,  
+          order_number: orderNumber,
+          payment_option: paymentOption,
+          status:'pending',
+        })
+        .returning('*');
+
+      // Send a success response with the inserted data
+      res.json({ success: true, checkoutData: insertedOrder });
+
+
+        // Send an email with the checkout information to the customer
+        const checkoutInfoEmailToCustomer = {
+          to: email,
+          from: 'yeilvastore@gmail.com',
+          subject: 'Checkout Information',
+         html: `
+    <html>
+      <body>
+        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; padding: 20px;">
+          <h1 style="text-align: center;">Thank You for Your Order!</h1>
+
+          <p>Dear ${firstname} ${lastname},</p>
+          
+          <p>We wanted to express our heartfelt thanks for choosing YeilvaSTORE for your recent purchase. Your order # ${orderNumber} has been received and is now being processed.</p>
+
+          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Order Details</h3>
+
+          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+            <p><strong>Product:</strong> ${name}</p>
+            <p><strong>Total Amount:</strong> ${total}</p>
+            <p><strong>Payment Method:</strong> ${paymentOption}</p>
+          </div>
+
+          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
+
+          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+            <p><strong>Address:</strong> ${address}</p>
+            <p><strong>Province:</strong> ${province}</p>
+            <p><strong>Phone:</strong> ${phone}</p>
+          </div>
+
+          <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at [yeilvastore@gmail.com] or [09497042268]. We're here to help!</p>
+
+          <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
+
+          <p>Best regards,</p>
+          <p>YeilvaSTORE</p>
+        </div>
+      </body>
+    </html>
+          `,
+        }; 
+
+       
+      // Send an email with the checkout information to the admin
+const checkoutInfoEmailToAdmin = {
+  to: 'ayeilva@yahoo.com',
+  from: 'yeilvastore@gmail.com',
+  subject: 'New Checkout Information',
+  html: `
+    <html>
+      <body>
+        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; padding: 20px;">
+          <h1 style="text-align: center;">Thank You for Your Order!</h1>
+
+          <p>Dear ${firstname} ${lastname},</p>
+          
+          <p>We wanted to express our heartfelt thanks for choosing YeilvaSTORE for your recent purchase. Your order # ${orderNumber} has been received and is now being processed.</p>
+
+          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Order Details</h3>
+
+          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+            <p><strong>Product:</strong> ${name}</p>
+            <p><strong>Total Amount:</strong> ${total}</p>
+            <p><strong>Payment Method:</strong> ${paymentOption}</p>
+          </div>
+
+          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
+
+          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+            <p><strong>Address:</strong> ${address}</p>
+            <p><strong>Province:</strong> ${province}</p>
+            <p><strong>Phone:</strong> ${phone}</p>
+          </div>
+
+          <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at [yeilvastore@gmail.com] or [09497042268]. We're here to help!</p>
+
+          <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
+
+          <p>Best regards,</p>
+          <p>YeilvaSTORE</p>
+        </div>
+      </body>
+    </html>
+  `,
+};
+
+
+       try {
+  // Send checkout info email to customer
+  await sgMail.send(checkoutInfoEmailToCustomer);
+  // Send checkout info email to admin
+  await sgMail.send(checkoutInfoEmailToAdmin);
+  console.log('Checkout information emails sent successfully');
+} catch (error) {
+  console.error('Error sending emails:', error);
+  // Handle email sending errors
+}
+
+   
+      console.log('Checkout information emails sent successfully');
+    }); // Close the try block here
+  } catch (error) {
+    console.error('Error during checkout:', error);
+    res.status(500).json('An error occurred during checkout');
+  }
+});
+
+
+// Generate an order number
+function generateOrderNumber() {
+  const timestamp = new Date().getTime(); // Current timestamp
+  const randomPart = Math.floor(Math.random() * 1000); // Random number (adjust as needed)
+  const orderNumber = `${timestamp}-${randomPart}`;
+  return orderNumber;
+}
+
+// Example route to create a new order
+app.post('/create-order', async (req, res) => {
+  try {
+    // Generate the order number
+    const orderNumber = generateOrderNumber();
+
+    // Insert the order into the database (replace 'orders' with your table name)
+    await pool.query('INSERT INTO installmentusers (order_number, ...other_fields) VALUES ($1, ...other_values)', [orderNumber, ...other_params]);
+
+    // Respond with the generated order number
+    res.status(201).json({ orderNumber });
+  } catch (error) {
+    console.error('Error creating order:', error);
+    res.status(500).json({ error: 'An error occurred while creating the order' });
+  }
+});
+
+
+
 app.get('/api/user', async (req, res) => {
   try {
     const userEmail = req.query.email;
@@ -926,6 +1114,90 @@ app.post('/api/updateStatus', async (req, res) => {
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 });
+
+
+app.get('/api/installment-history', async (req, res) => {
+  try {
+    const userEmail = req.query.email;
+
+    if (!userEmail) {
+      return res.status(400).json({ error: 'Email parameter is missing' });
+    }
+const result = await db
+ .select( 'total', 'name', 'checkout_date', 'order_number', 'address',  'phone', 'status', 'payment1', 'payment1_date','payment2','payment2_date', 'payment3','payment3_date', 'payment4','payment4_date')
+  .from('installmentusers')
+  .where('email', userEmail.replace(/"/g, ''));  // Remove extra quotes here
+
+
+const query = db
+   .select( 'total', 'name', 'checkout_date', 'order_number', 'address',  'phone', 'status', 'payment1', 'payment1_date','payment2','payment2_date', 'payment3','payment3_date', 'payment4','payment4_date')
+  .from('installmentusers')
+  .where('email', userEmail)
+  .toQuery();
+
+// console.log('SQL Query:', query);
+// console.log('Result:', result);
+
+res.json(result);
+  } catch (error) {
+    console.error('Error fetching loan history:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
+  }
+});
+
+
+
+app.post('/api/updateInstallments', async (req, res) => {
+  const {
+    applicationNumber,
+    payment1,
+    payment1_date,
+    payment2,
+    payment2_date,
+    payment3,
+    payment3_date,
+    payment4,
+    payment4_date,
+  } = req.body;
+
+  try {
+    // Perform database update for payments and payment dates
+    await pool.query(
+      'UPDATE installmentusers SET payment1 = $1, payment1_date = $2, ' +
+      'payment2 = $3, payment2_date = $4, ' +
+      'payment3 = $5, payment3_date = $6, ' +
+      'payment4 = $7, payment4_date = $8 ' +
+      'WHERE order_number = $9',
+      [payment1, payment1_date, payment2, payment2_date, payment3, payment3_date, payment4, payment4_date, applicationNumber]
+    );
+
+    res.json({ success: true, message: 'Payments updated successfully' });
+  } catch (error) {
+    console.error('Error updating payments:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
+
+
+// Endpoint to update status
+app.post('/api/installmentStatus', async (req, res) => {
+  const { order_number, newStatus } = req.body;
+
+  try {
+    // Perform database update for status
+    await pool.query(
+      'UPDATE installmentusers SET status = $1 WHERE application_number = $2',
+      [newStatus, order_number]
+    );
+
+    res.json({ success: true, message: 'Status updated successfully' });
+  } catch (error) {
+    console.error('Error updating status:', error);
+    res.status(500).json({ success: false, message: 'Internal server error' });
+  }
+});
+
 
 
 
