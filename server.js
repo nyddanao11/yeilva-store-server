@@ -517,6 +517,14 @@ app.post('/installmentusers', async (req, res) => {
      paymentOption, 
   } = req.body;
 
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() + 7); // Add 7 days to the current date
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + 32); // Add 32 days to the current date
+
+    const formattedStartDate = startDate.toDateString(); // Convert to a readable date format
+    const formattedEndDate = endDate.toDateString(); // Convert to a readable date format
+
    const user = await pool.query('SELECT status FROM installmentusers WHERE email = $1 ORDER BY checkout_date DESC LIMIT 1', [email]);
 
     if (user.rows.length > 0) {
@@ -524,6 +532,10 @@ app.post('/installmentusers', async (req, res) => {
       if (lastStatus === 'pending') {
         return res.status(400).json({ error: 'You cannot submit the form while your application is pending.' });
       }
+    }
+
+    if (total < 500){
+      return res.status(500).json({error:'You cannot avail installemnt payment option if your total purchases is below 500'});
     }
 
   try {
@@ -555,6 +567,7 @@ app.post('/installmentusers', async (req, res) => {
       res.json({ success: true, checkoutData: insertedOrder });
 
 
+
         // Send an email with the checkout information to the customer
         const checkoutInfoEmailToCustomer = {
           to: email,
@@ -576,6 +589,7 @@ app.post('/installmentusers', async (req, res) => {
             <p><strong>Product:</strong> ${name}</p>
             <p><strong>Total Amount:</strong> ${total}</p>
             <p><strong>Payment Method:</strong> ${paymentOption}</p>
+            <p>Your first Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
           </div>
 
           <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
@@ -620,6 +634,7 @@ const checkoutInfoEmailToAdmin = {
             <p><strong>Product:</strong> ${name}</p>
             <p><strong>Total Amount:</strong> ${total}</p>
             <p><strong>Payment Method:</strong> ${paymentOption}</p>
+            <p>Your first Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
           </div>
 
           <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
