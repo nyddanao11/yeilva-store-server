@@ -1194,16 +1194,15 @@ app.post('/api/updateInstallments', async (req, res) => {
 });
 
 
-
 // Endpoint to update status
 app.post('/api/installmentStatus', async (req, res) => {
-  const { order_number, newStatus } = req.body;
+  const { applicationNumber, newStatus } = req.body;
 
   try {
     // Perform database update for status
     await pool.query(
-      'UPDATE installmentusers SET status = $1 WHERE application_number = $2',
-      [newStatus, order_number]
+      'UPDATE installmentusers SET status = $1 WHERE order_number = $2',
+      [newStatus, applicationNumber]
     );
 
     res.json({ success: true, message: 'Status updated successfully' });
