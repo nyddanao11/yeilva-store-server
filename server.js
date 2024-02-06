@@ -569,7 +569,7 @@ app.post('/installmentusers', async (req, res) => {
 
 
         // Send an email with the checkout information to the customer
-        const checkoutInfoEmailToCustomer = {
+        const checkoutEmailToCustomer = {
           to: email,
           from: 'yeilvastore@gmail.com',
           subject: 'Checkout Information',
@@ -614,7 +614,7 @@ app.post('/installmentusers', async (req, res) => {
 
        
       // Send an email with the checkout information to the admin
-const checkoutInfoEmailToAdmin = {
+const checkoutEmailToAdmin = {
   to: 'ayeilva@yahoo.com',
   from: 'yeilvastore@gmail.com',
   subject: 'New Checkout Information',
@@ -660,9 +660,9 @@ const checkoutInfoEmailToAdmin = {
 
        try {
   // Send checkout info email to customer
-  await sgMail.send(checkoutInfoEmailToCustomer);
+  await sgMail.send(checkoutEmailToCustomer);
   // Send checkout info email to admin
-  await sgMail.send(checkoutInfoEmailToAdmin);
+  await sgMail.send(checkoutEmailToAdmin);
   console.log('Checkout information emails sent successfully');
 } catch (error) {
   console.error('Error sending emails:', error);
