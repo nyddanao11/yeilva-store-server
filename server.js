@@ -271,7 +271,7 @@ const hash = bcrypt.hashSync(password, salt);
       html: `<html>
       <body>
       <div>
-      <h4>Dear ${firstname} ${lastname},</h4>
+      <p>Dear ${firstname} ${lastname},</p>
       <p>Thank you for signing up! To verify your email address, please click the link below:</p> 
       <a href="${verificationLink}">Verification Link</a>
       <p>If you have any questions, feel free to reply to this email.</p>
