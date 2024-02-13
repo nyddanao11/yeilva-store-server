@@ -266,10 +266,21 @@ const hash = bcrypt.hashSync(password, salt);
     // Craft the confirmation email
     const msg = {
       to: email,
-      from: 'yeilvastore@gmail.com', // Replace with your email address
-
+      from: 'yeilvastore@gmail.com',
       subject: 'Email Verification',
-      text: `Click the following link to verify your email: ${verificationLink}`,
+      html: `<html>
+      <body>
+      <div>
+      <h4>Dear ${firstname} ${lastname},</h4>
+      <p>Thank you for signing up! To verify your email address, please click the link below:</p> 
+      <a href="${verificationLink}">Verification Link</a>
+      <p>If you have any questions, feel free to reply to this email.</p>
+
+      <p>Best regards,</p>
+      <p>YeilvaSTORE</p>
+      </div>
+      </body>
+      </html>`,
     };
 
     // Send the confirmation email
