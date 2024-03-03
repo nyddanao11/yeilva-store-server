@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const crypto =require('crypto');
 const cors = require('cors');
 const knex = require('knex');
+const cron = require('node-cron');
 const sgMail = require('@sendgrid/mail');
 const { Pool } = require('pg');
 const axios = require('axios');
@@ -1337,6 +1338,37 @@ app.post('/api/adminregister', async (req, res) => {
 
 
 
+// Define a route for deleting users
+app.delete('/api/deleteInactiveUsers', async (req, res) => {
+  try {
+    // Calculate the timestamp 30 minutes ago
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60000); // 30 minutes * 60 seconds * 1000 milliseconds
+
+    // Query to delete inactive users
+    const deleteQuery = 'DELETE FROM users WHERE verified = false AND timestamp < $1';
+
+    // Execute the query
+    const result = await pool.query(deleteQuery, [thirtyMinutesAgo]);
+
+    res.status(200).json({ message: 'Inactive users deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting inactive users:', error);
+    res.status(500).json({ error: 'An error occurred while deleting inactive users' });
+  }
+});
+
+// Schedule the deletion job to run every 30 minutes
+cron.schedule('*/30 * * * *', async () => {
+  try {
+    // Perform the deletion process
+    const deleteQuery = 'DELETE FROM users WHERE verified = false AND timestamp < $1';
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60000);
+    await pool.query(deleteQuery, [thirtyMinutesAgo]);
+    console.log('Inactive users deleted successfully');
+  } catch (error) {
+    console.error('Error deleting inactive users:', error);
+  }
+});
 
 
 // Endpoint to create a checkout session
