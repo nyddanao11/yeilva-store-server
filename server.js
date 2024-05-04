@@ -1399,7 +1399,7 @@ app.post('/api/messages', async (req, res) => {
       }
     } else {
       // Email doesn't exist, insert a new record
-      const queryInsert = 'INSERT INTO usershelp (email, message, responded, timestamp) VALUES ($1, $2, false, CURRENT_TIMESTAMP)';
+      const queryInsert = 'INSERT INTO usershelp (email, message, responded, timestamp) VALUES ($1, $2, false, CURRENT_DATE)';
       await client.query(queryInsert, [email, mainMessage]);
       res.status(200).json({ status: 'success', message: 'Message created successfully.' });
     }
