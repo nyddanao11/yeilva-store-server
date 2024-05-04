@@ -1371,6 +1371,50 @@ cron.schedule('*/30 * * * *', async () => {
 });
 
 
+app.post('/api/messages', async (req, res) => {
+  const { email, mainMessage } = req.body;
+
+  let client = null; // To ensure client release in all cases
+  try {
+    client = await pool.connect();  // Connect once
+
+    // Check if email exists
+    const queryCheckEmail = 'SELECT EXISTS(SELECT 1 FROM usershelp WHERE email = $1)';
+    const resultCheckEmail = await client.query(queryCheckEmail, [email]);
+
+    if (resultCheckEmail.rows[0].exists) {
+      // Email exists, check if the responded flag is true or false
+      const queryCheckResponded = 'SELECT responded FROM usershelp WHERE email = $1';
+      const resultCheckResponded = await client.query(queryCheckResponded, [email]);
+
+      if (resultCheckResponded.rows[0].responded === true) {  // Correctly checking for `false`
+       // If responded is true, update message and reset responded flag
+        const queryUpdate = 'UPDATE usershelp SET message = $2, responded = false WHERE email = $1';
+        await client.query(queryUpdate, [email, mainMessage]);
+        res.status(200).json({ status: 'success', message: 'Message created successfully.' });
+      } else {
+        // If responded is false
+        res.status(400).json({status: 'failure', message: 'Failed to save message. User hasnt been responded to.' });
+         
+      }
+    } else {
+      // Email doesn't exist, insert a new record
+      const queryInsert = 'INSERT INTO usershelp (email, message, responded, timestamp) VALUES ($1, $2, false, CURRENT_TIMESTAMP)';
+      await client.query(queryInsert, [email, mainMessage]);
+      res.status(200).json({ status: 'success', message: 'Message created successfully.' });
+    }
+
+    client.release();  // Release the client at the end
+  } catch (error) {
+    if (client) {
+      client.release();  // Ensure client release in case of error
+    }
+    console.error('Database error:', error);
+    res.status(500).json({ status: 'failure', error: 'Internal server error.' });
+  }
+});
+
+
 // Endpoint to create a checkout session
 app.post('/create-checkout', (req, res) => {
   sdk.createACheckout({
