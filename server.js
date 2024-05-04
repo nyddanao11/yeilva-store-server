@@ -334,7 +334,10 @@ app.get('/confirm', async (req, res) => {
 });
 
 
-
+const cleanNumericValue = (value) => {
+  // Remove any non-numeric characters except decimal points
+  return parseFloat(value.replace(/[^\d.-]/g, ''));
+};
 
 
 app.post('/checkout', async (req, res) => {
@@ -352,6 +355,7 @@ app.post('/checkout', async (req, res) => {
   } = req.body;
 
   try {
+       const cleanTotal = cleanNumericValue(total); // Clean the total value
     // Start a database transaction
     await db.transaction(async (trx) => {
       // Generate the order number
@@ -369,7 +373,7 @@ app.post('/checkout', async (req, res) => {
           checkout_date: new Date(),
           name,
           quantity,
-          total,  
+        total: cleanTotal,  // Insert cleaned total
           order_number: orderNumber,
           payment_option: paymentOption,
         })
