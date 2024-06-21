@@ -24,10 +24,13 @@ require('dotenv').config({ path: 'sendgrid.env' });
 require('dotenv').config({ path: 'paymongo.env' });
 require('dotenv').config({ path: 'tokensecret.env' });
 require('dotenv').config({ path: 's3.env' });
+require('dotenv').config();
 const { Sequelize, DataTypes } = require('sequelize');
 
-const sequelize = new Sequelize('postgres://process.env.POSTGRES_USER:process.env.POSTGRES_PASSWORD@process.env.RAILWAY_TCP_PROXY_PORT/process.env.POSTGRES_DB');
 
+const sequelize = new Sequelize(
+  `postgres://${process.env.POSTGRES_USER}:${process.env.POSTGRES_PASSWORD}@${process.env.RAILWAY_TCP_PROXY_DOMAIN}:${process.env.RAILWAY_TCP_PROXY_PORT}/${process.env.POSTGRES_DB}`
+);
 const db = knex({
   client: 'pg',
   connection: {
@@ -1457,24 +1460,24 @@ const Voucher = sequelize.define('Voucher', {
   code: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true
+    unique: true,
   },
   discount: {
     type: DataTypes.DECIMAL,
-    allowNull: false
+    allowNull: false,
   },
   expirationDate: {
     type: DataTypes.DATE,
-    allowNull: false
+    allowNull: false,
   },
   isActive: {
     type: DataTypes.BOOLEAN,
-    defaultValue: true
-  }
+    defaultValue: true,
+  },
 });
 
 // Sync the model with the database
-sequelize.sync({ force: true }).then(() => {
+sequelize.sync({ alter: true }).then(() => {
   console.log("Database & tables created!");
 });
 
@@ -1488,7 +1491,6 @@ app.post('/api/vouchers', async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 });
-
 
 // Validate a voucher
 app.post('/api/vouchers/validate', async (req, res) => {
