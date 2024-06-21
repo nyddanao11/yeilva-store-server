@@ -20,15 +20,13 @@ const upload = multer({ storage: storage });
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const checkAuthRouter = require('./Routes/checkAuth');
-const sdk = require('api')('@paymongo/v2#gr8xcr81ylnv4k33i');
 require('dotenv').config({ path: 'sendgrid.env' });
 require('dotenv').config({ path: 'paymongo.env' });
 require('dotenv').config({ path: 'tokensecret.env' });
 require('dotenv').config({ path: 's3.env' });
+const { Sequelize, DataTypes } = require('sequelize');
 
-
-
-
+const sequelize = new Sequelize('postgres://process.env.POSTGRES_USER:process.env.POSTGRES_PASSWORD@process.env.RAILWAY_TCP_PROXY_PORT/process.env.POSTGRES_DB');
 
 const db = knex({
   client: 'pg',
@@ -1419,34 +1417,96 @@ app.post('/api/messages', async (req, res) => {
 });
 
 
-// Endpoint to create a checkout session
-app.post('/create-checkout', (req, res) => {
-  sdk.createACheckout({
-    data: {
-      attributes: { send_email_receipt: false, show_description: true, show_line_items: true }
+app.post('/api/reviews', async (req, res) => {
+  const reviewData = req.body;
+
+  try {
+    // Here you can save the review data to your PostgreSQL database
+    console.log('Received review:', reviewData);
+    await pool.query('INSERT INTO reviews (rating, comments, firstname, lastname, email, productname, submitted) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_DATE)', 
+                    [reviewData.rating, reviewData.comment, reviewData.userData.firstname, reviewData.userData.lastname, reviewData.userData.email, reviewData.productname]);
+    // Send a response back to the client
+    res.status(200).send('Review received!');
+  } catch(error) {
+    console.error('Saving failed', error);
+    res.status(500).json({ error: 'An error occurred during saving' });
+  }
+});
+
+
+// Endpoint to fetch reviews based on product name
+app.get('/api/userreviews', async (req, res) => {
+  try {
+    const { productName } = req.query;
+    // Query the database for reviews based on product name
+    const result = await pool.query('SELECT comments, email FROM reviews WHERE productname = $1', [productName]);
+    const reviews = result.rows.map(row => ({
+      comments: row.comments,
+      email: row.email
+    }));
+    // Send the fetched reviews as a response
+    res.json(reviews);
+  } catch (error) {
+    console.error('Error fetching reviews:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+const Voucher = sequelize.define('Voucher', {
+  code: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true
+  },
+  discount: {
+    type: DataTypes.DECIMAL,
+    allowNull: false
+  },
+  expirationDate: {
+    type: DataTypes.DATE,
+    allowNull: false
+  },
+  isActive: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: true
+  }
+});
+
+// Sync the model with the database
+sequelize.sync({ force: true }).then(() => {
+  console.log("Database & tables created!");
+});
+
+// Create a voucher
+app.post('/api/vouchers', async (req, res) => {
+  const { code, discount, expirationDate } = req.body;
+  try {
+    const voucher = await Voucher.create({ code, discount, expirationDate });
+    res.json(voucher);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+
+// Validate a voucher
+app.post('/api/vouchers/validate', async (req, res) => {
+  const { code } = req.body;
+  try {
+    const voucher = await Voucher.findOne({ where: { code, isActive: true } });
+    if (voucher && new Date(voucher.expirationDate) > new Date()) {
+      // Deactivate the voucher after validation
+      voucher.isActive = false;
+      await voucher.save();
+      res.json(voucher);
+    } else {
+      res.status(400).json({ error: 'Invalid or expired voucher' });
     }
-  })
-    .then(({ data }) => res.json(data))
-    .catch(err => res.status(500).json({ error: err.message }));
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
 });
-
-// Endpoint to retrieve a checkout session
-app.get('/retrieve-checkout/:checkout_session_id', (req, res) => {
-  sdk.auth('sk_test_b13vZMxsGY7q8cDsABgkZoEy', '');
-  sdk.retrieveACheckout({ checkout_session_id: req.params.checkout_session_id })
-    .then(({ data }) => res.json(data))
-    .catch(err => res.status(500).json({ error: err.message }));
-});
-
-// Endpoint to expire a checkout session
-app.put('/expire-checkout/:checkout_session_id', (req, res) => {
-  sdk.auth('sk_test_b13vZMxsGY7q8cDsABgkZoEy', '');
-  sdk.expireACheckoutSession({ checkout_session_id: req.params.checkout_session_id })
-    .then(({ data }) => res.json(data))
-    .catch(err => res.status(500).json({ error: err.message }));
-});
-
-
 
 
 const PORT = process.env.PORT || 3001;
