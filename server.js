@@ -1437,15 +1437,52 @@ app.post('/api/reviews', async (req, res) => {
 });
 
 
+app.get('/api/reviewstatus', async (req, res) => {
+  const { userEmail, productName } = req.query;
+  
+  console.log('Received parameters:', { userEmail, productName });
+  
+  if (!userEmail || !productName) {
+    return res.status(400).json({ error: 'userEmail and productName are required' });
+  }
+
+  try {
+    // Step 1: Check if the user has a checkout history for the product
+    const checkoutQuery = `
+      SELECT * FROM checkout 
+      WHERE email = $1 AND productname =$2`;
+    const checkoutResult = await pool.query(checkoutQuery, [userEmail, productName]);
+
+    if (checkoutResult.rows.length === 0) {
+      return res.status(404).json({ error: 'No checkout history for this product' });
+    }
+
+    // Step 2: Check if the user has already reviewed the product
+    const reviewQuery = 'SELECT * FROM reviews WHERE email = $1 AND productname = $2';
+    const reviewResult = await pool.query(reviewQuery, [userEmail, productName]);
+
+    if (reviewResult.rows.length > 0) {
+      return res.status(200).json({ reviewed: true, message: 'User has already reviewed this product' });
+    }
+
+    return res.status(200).json({ reviewed: false, message: 'User can write a review for this product' });
+  } catch (error) {
+    console.error('Error executing SQL query:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
 // Endpoint to fetch reviews based on product name
 app.get('/api/userreviews', async (req, res) => {
   try {
     const { productName } = req.query;
     // Query the database for reviews based on product name
-    const result = await pool.query('SELECT comments, email FROM reviews WHERE productname = $1', [productName]);
+    const result = await pool.query('SELECT comments, email, rating FROM reviews WHERE productname = $1', [productName]);
     const reviews = result.rows.map(row => ({
       comments: row.comments,
-      email: row.email
+      email: row.email,
+      rating: row.rating
     }));
     // Send the fetched reviews as a response
     res.json(reviews);
