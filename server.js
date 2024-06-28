@@ -352,7 +352,8 @@ app.post('/checkout', async (req, res) => {
     name,
     quantity,
     total,
-     paymentOption, 
+    paymentOption, 
+    productNames,
   } = req.body;
 
   try {
@@ -377,6 +378,7 @@ app.post('/checkout', async (req, res) => {
         total: cleanTotal,  // Insert cleaned total
           order_number: orderNumber,
           payment_option: paymentOption,
+          productname: productNames,
         })
         .returning('*');
 
