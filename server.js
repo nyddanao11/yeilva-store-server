@@ -1437,7 +1437,25 @@ app.post('/api/reviews', async (req, res) => {
 });
 
 
+const cleanUpProductNameColumn = async () => {
+  try {
+    const query = `
+      UPDATE checkout
+       SET productname = REGEXP_REPLACE(productname, '[{}"]', '', 'g')
+      WHERE productname ~ '[{}"]';
+    `;
+
+    const result = await pool.query(query);
+    console.log('Clean up successful:', result.rowCount, 'rows updated');
+  } catch (error) {
+    console.error('Error cleaning up productname column:', error);
+  }
+};
+
 app.get('/api/reviewstatus', async (req, res) => {
+
+  await cleanUpProductNameColumn();
+
   const { userEmail, productName } = req.query;
   
   console.log('Received parameters:', { userEmail, productName });
