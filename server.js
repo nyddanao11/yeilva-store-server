@@ -521,6 +521,31 @@ app.post('/create-order', async (req, res) => {
 });
 
 
+app.get('/api/checkoutdata', async (req, res) => {
+  try {
+    const userEmail = req.query.email;
+    console.log('Received request for user email:', userEmail); // Add this line for debugging
+
+   const query = 'SELECT address, province, phone FROM checkout WHERE email = $1';
+
+    const result = await pool.query(query, [userEmail]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+
+    const user = result.rows[0];
+    console.log('User data sent to client:', user);
+    return res.json(user);
+
+   
+  } catch (error) {
+    console.error('Error executing SQL query:', error); // Log the SQL query error
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 
 app.post('/installmentusers', async (req, res) => {
   const {
@@ -1531,6 +1556,10 @@ const Voucher = sequelize.define('Voucher', {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
+    selected: {
+    type: DataTypes.BOOLEAN,
+    defaultValue: false
+  }
 });
 
 // Sync the model with the database
@@ -1567,6 +1596,142 @@ app.post('/api/vouchers/validate', async (req, res) => {
   }
 });
 
+
+
+// API to register new user and assign voucher
+app.post('/registerfreecode', async (req, res) => {
+    const { email } = req.body;
+
+    try {
+        // Check if the user already exists
+        const userResult = await pool.query('SELECT * FROM freevoucher WHERE email = $1', [email]);
+
+        if (userResult.rows.length > 0) {
+            return res.status(400).json({ error: 'User already exists' });
+        }
+
+        // Insert the new user
+        const insertUserQuery = 'INSERT INTO freevoucher (email) VALUES ($1) RETURNING id';
+        const newUser = await pool.query(insertUserQuery, [email]);
+        const userId = newUser.rows[0].id;
+  // Select an active voucher
+        const voucherResult = await pool.query('SELECT code FROM "Vouchers" WHERE discount = 15 AND selected = false AND "isActive" = true LIMIT 1');
+        if (voucherResult.rows.length === 0) {
+            return res.status(400).json({ error: 'No Discount Voucher available' });
+        }
+
+        const voucherCode = voucherResult.rows[0].code;
+
+        // Mark the voucher as inactive
+        await pool.query('UPDATE "Vouchers" SET selected = true WHERE code = $1', [voucherCode]);
+
+        // Send the voucher code via email
+        await sendEmail(email, voucherCode);
+          // Mark the user as having received a voucher
+        await pool.query('UPDATE freevoucher SET hasreceivedvoucher = true WHERE id = $1', [userId]);
+
+        res.json({ success: 'User registered and voucher sent successfully' });
+
+         } catch (error) {
+        console.error('Error registering user:', error.message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// Function to send email using SendGrid
+const sendEmail = async (email, voucherCode) => {
+    const msg = {
+        to: email,
+        from: 'yeilvastore@gmail.com', // Use your verified SendGrid sender email
+        subject: 'Your Discount Voucher',
+        text: `Congratulations! Here is your discount voucher code: ${voucherCode}`,
+        html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Your Discount Voucher</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 0;
+                    background-color: #f4f4f4;
+                }
+                .container {
+                    width: 100%;
+                    max-width: 600px;
+                    margin: 0 auto;
+                    background-color: #ffffff;
+                    padding: 20px;
+                    border-radius: 10px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                }
+                .header {
+                    text-align: center;
+                    padding: 20px 0;
+                    background-color: #232f3e;
+                    color: #ffffff;
+                    border-top-left-radius: 10px;
+                    border-top-right-radius: 10px;
+                }
+                .header h1 {
+                    margin: 0;
+                    font-size: 24px;
+                }
+                .body {
+                    padding: 20px;
+                }
+                .body p {
+                    font-size: 16px;
+                    line-height: 1.5;
+                    color: #333333;
+                }
+                .voucher-code {
+                    font-size: 20px;
+                    font-weight: bold;
+                    background-color: #f0f0f0;
+                    padding: 10px;
+                    text-align: center;
+                    margin: 20px 0;
+                    border-radius: 5px;
+                    border: 1px solid #dddddd;
+                }
+                .footer {
+                    text-align: center;
+                    padding: 20px 0;
+                    background-color: #f0f0f0;
+                    color: #888888;
+                    border-bottom-left-radius: 10px;
+                    border-bottom-right-radius: 10px;
+                }
+                .footer p {
+                    margin: 0;
+                    font-size: 12px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Yeilva Store</h1>
+                </div>
+                <div class="body">
+                    <p>Congratulations!</p>
+                    <p>We are excited to offer you a 20% discount voucher for your next purchase. Use the code below at checkout:</p>
+                    <div class="voucher-code">${voucherCode}</div>
+                    <p>Thank you for shopping with us!</p>
+                </div>
+                <div class="footer">
+                    <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>`,
+    };
+    await sgMail.send(msg);
+};
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
