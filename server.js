@@ -1638,7 +1638,6 @@ app.post('/registerfreecode', async (req, res) => {
     }
 });
 
-// Function to send email using SendGrid
 const sendEmail = async (email, voucherCode) => {
     const msg = {
         to: email,
@@ -1710,6 +1709,13 @@ const sendEmail = async (email, voucherCode) => {
                     margin: 0;
                     font-size: 12px;
                 }
+                .body a {
+                    color: #1a73e8;
+                    text-decoration: none;
+                }
+                .body a:hover {
+                    text-decoration: underline;
+                }
             </style>
         </head>
         <body>
@@ -1719,9 +1725,10 @@ const sendEmail = async (email, voucherCode) => {
                 </div>
                 <div class="body">
                     <p>Congratulations!</p>
-                    <p>We are excited to offer you a 20% discount voucher for your next purchase. Use the code below at checkout:</p>
+                    <p>We are excited to offer you a 15% discount voucher for your next purchase. Use the code below at checkout:</p>
                     <div class="voucher-code">${voucherCode}</div>
                     <p>Thank you for shopping with us!</p>
+                    <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">Shop Now</a></p>
                 </div>
                 <div class="footer">
                     <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
@@ -1730,8 +1737,15 @@ const sendEmail = async (email, voucherCode) => {
         </body>
         </html>`,
     };
-    await sgMail.send(msg);
+
+    try {
+        await sgMail.send(msg);
+        console.log('Email sent successfully');
+    } catch (error) {
+        console.error('Error sending email:', error);
+    }
 };
+
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
