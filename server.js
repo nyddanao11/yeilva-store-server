@@ -1596,11 +1596,8 @@ app.post('/api/vouchers/validate', async (req, res) => {
   }
 });
 
-
-
-// API to register new user and assign voucher
 app.post('/registerfreecode', async (req, res) => {
-    const { email } = req.body;
+    const { email, deviceInfo } = req.body;
 
     try {
         // Check if the user already exists
@@ -1610,11 +1607,19 @@ app.post('/registerfreecode', async (req, res) => {
             return res.status(400).json({ error: 'User already exists' });
         }
 
-        // Insert the new user
-        const insertUserQuery = 'INSERT INTO freevoucher (email) VALUES ($1) RETURNING id';
-        const newUser = await pool.query(insertUserQuery, [email]);
+        // Check if the device already exists
+        const userDevice = await pool.query('SELECT * FROM freevoucher WHERE device_info @> $1::jsonb', [JSON.stringify(deviceInfo)]);
+
+        if (userDevice.rows.length > 0) {
+            return res.status(400).json({ error: 'User already registered' });
+        }
+
+        // Insert the new user and device information
+        const insertUserQuery = 'INSERT INTO freevoucher (email, device_info) VALUES ($1, $2) RETURNING id';
+        const newUser = await pool.query(insertUserQuery, [email, JSON.stringify(deviceInfo)]);
         const userId = newUser.rows[0].id;
-  // Select an active voucher
+
+      // Select an active voucher
         const voucherResult = await pool.query('SELECT code FROM "Vouchers" WHERE discount = 15 AND selected = false AND "isActive" = true LIMIT 1');
         if (voucherResult.rows.length === 0) {
             return res.status(400).json({ error: 'No Discount Voucher available' });
@@ -1632,11 +1637,12 @@ app.post('/registerfreecode', async (req, res) => {
 
         res.json({ success: 'User registered and voucher sent successfully' });
 
-         } catch (error) {
+    } catch (error) {
         console.error('Error registering user:', error.message);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
 
 const sendEmail = async (email, voucherCode) => {
     const msg = {
