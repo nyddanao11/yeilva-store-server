@@ -1607,18 +1607,18 @@ app.post('/registerfreecode', async (req, res) => {
             return res.status(400).json({ error: 'User already exists' });
         }
 
-        // Check if the device already exists
-        const userDevice = await pool.query('SELECT * FROM freevoucher WHERE device_info @> $1::jsonb', [JSON.stringify(deviceInfo)]);
+        // Check if the device already exists, with explicit casting
+        const userDevice = await pool.query('SELECT * FROM freevoucher WHERE device_info::jsonb @> $1::jsonb', [JSON.stringify(deviceInfo)]);
 
         if (userDevice.rows.length > 0) {
-            return res.status(400).json({ error: 'User already registered' });
+            return res.status(400).json({ error: 'Device already registered' });
         }
 
         // Insert the new user and device information
         const insertUserQuery = 'INSERT INTO freevoucher (email, device_info) VALUES ($1, $2) RETURNING id';
         const newUser = await pool.query(insertUserQuery, [email, JSON.stringify(deviceInfo)]);
         const userId = newUser.rows[0].id;
-
+        
       // Select an active voucher
         const voucherResult = await pool.query('SELECT code FROM "Vouchers" WHERE discount = 15 AND selected = false AND "isActive" = true LIMIT 1');
         if (voucherResult.rows.length === 0) {
