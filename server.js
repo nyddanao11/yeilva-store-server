@@ -25,12 +25,13 @@ require('dotenv').config({ path: 'paymongo.env' });
 require('dotenv').config({ path: 'tokensecret.env' });
 require('dotenv').config({ path: 's3.env' });
 require('dotenv').config();
-const { Sequelize, DataTypes } = require('sequelize');
+const { Sequelize, DataTypes, Op } = require('sequelize');
 
 
 const sequelize = new Sequelize(
   `postgres://${process.env.POSTGRES_USER}:${process.env.POSTGRES_PASSWORD}@${process.env.RAILWAY_TCP_PROXY_DOMAIN}:${process.env.RAILWAY_TCP_PROXY_PORT}/${process.env.POSTGRES_DB}`
 );
+
 const db = knex({
   client: 'pg',
   connection: {
@@ -1346,9 +1347,6 @@ app.post('/api/adminlogin', async (req, res) => {
 });
 
 
-
-
-
 // Example registration endpoint
 app.post('/api/adminregister', async (req, res) => {
   const { username, password } = req.body;
@@ -1389,18 +1387,20 @@ app.delete('/api/deleteInactiveUsers', async (req, res) => {
   }
 });
 
-// Schedule the deletion job to run every 30 minutes
-cron.schedule('*/30 * * * *', async () => {
+
+// Schedule the deletion job to run every day at midnight
+cron.schedule('0 0 * * *', async () => {
   try {
     // Perform the deletion process
     const deleteQuery = 'DELETE FROM users WHERE verified = false AND timestamp < $1';
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60000);
-    await pool.query(deleteQuery, [thirtyMinutesAgo]);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60000); // 24 hours ago
+    await pool.query(deleteQuery, [oneDayAgo]);
     console.log('Inactive users deleted successfully');
   } catch (error) {
     console.error('Error deleting inactive users:', error);
   }
 });
+
 
 
 app.post('/api/messages', async (req, res) => {
@@ -1596,6 +1596,28 @@ app.post('/api/vouchers/validate', async (req, res) => {
   }
 });
 
+
+// Schedule a task to run at 00:00 on the first day of every month
+cron.schedule('0 0 1 * *', async () => {
+  try {
+    const currentDate = new Date();
+    
+    // Delete all vouchers that have expired
+    const deleted = await Voucher.destroy({
+      where: {
+        expirationDate: {
+          [Op.lt]: currentDate, // Vouchers with expirationDate less than the current date
+        }
+      }
+    });
+
+    console.log(`Deleted ${deleted} expired vouchers`);
+  } catch (error) {
+    console.error('Error deleting expired vouchers:', error);
+  }
+});
+
+
 app.post('/registerfreecode', async (req, res) => {
     const { email, deviceInfo } = req.body;
 
@@ -1751,6 +1773,183 @@ const sendEmail = async (email, voucherCode) => {
         console.error('Error sending email:', error);
     }
 };
+
+
+app.post('/openraffle', async (req, res) => {
+  const { fullname, email, deviceInfo } = req.body;
+
+  try {
+    // Check if the email already exists
+    const emailResult = await pool.query('SELECT email FROM raffleopen WHERE email = $1', [email]);
+    if (emailResult.rows.length > 0) {
+      // Email already exists
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    // Check if the device already exists
+    const userDevice = await pool.query('SELECT * FROM raffleopen WHERE device_info @> $1::jsonb', [JSON.stringify(deviceInfo)]);
+    if (userDevice.rows.length > 0) {
+      return res.status(400).json({ error: 'User already registered' });
+    }
+
+    // Insert the new raffle entry
+    const query = 'INSERT INTO raffleopen (fullname, email, submitted, device_info) VALUES ($1, $2, $3, $4)';
+    const values = [fullname, email, new Date(), deviceInfo];
+    await pool.query(query, values);
+
+    // Send the success response
+    res.json({ success: true });
+
+    // Send the email asynchronously after responding to the client
+    openRaffleEmail(email, fullname)
+      .then(() => console.log('Email sent successfully'))
+      .catch((err) => console.error('Error sending email:', err));
+
+  } catch (error) {
+    console.error('Error storing raffle entry:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+});
+
+
+const openRaffleEmail = async (email, fullname) => {
+    const msg = {
+        to: email,
+        from: 'yeilvastore@gmail.com', // Your verified SendGrid sender email
+        subject: 'Congratulations on Your Raffle Registration!',
+        text: `Dear ${fullname}, Congratulations! Your raffle entry has been successfully submitted.`,
+        html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Raffle Registration Confirmation</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 0;
+                    background-color: #f4f4f4;
+                }
+                .container {
+                    width: 100%;
+                    max-width: 600px;
+                    margin: 0 auto;
+                    background-color: #ffffff;
+                    padding: 20px;
+                    border-radius: 10px;
+                    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+                }
+                .header {
+                    text-align: center;
+                    padding: 20px 0;
+                    background-color: #232f3e;
+                    color: #ffffff;
+                    border-top-left-radius: 10px;
+                    border-top-right-radius: 10px;
+                }
+                .header h1 {
+                    margin: 0;
+                    font-size: 24px;
+                }
+                .body {
+                    padding: 20px;
+                    color: #333333;
+                }
+                .body p {
+                    font-size: 16px;
+                    line-height: 1.6;
+                }
+                .voucher-code {
+                    font-size: 18px;
+                    font-weight: bold;
+                    background-color: #f0f0f0;
+                    padding: 10px;
+                    text-align: center;
+                    margin: 20px 0;
+                    border-radius: 5px;
+                    border: 1px solid #dddddd;
+                    color: #333333;
+                }
+                .footer {
+                    text-align: center;
+                    padding: 20px 0;
+                    background-color: #f0f0f0;
+                    color: #888888;
+                    border-bottom-left-radius: 10px;
+                    border-bottom-right-radius: 10px;
+                }
+                .footer p {
+                    margin: 0;
+                    font-size: 12px;
+                }
+                .body a {
+                    color: #1a73e8;
+                    text-decoration: none;
+                }
+                .body a:hover {
+                    text-decoration: underline;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Yeilva Store</h1>
+                </div>
+                <div class="body">
+                    <p>Dear ${fullname},</p>
+                    <p>We are thrilled to inform you that your raffle entry has been successfully submitted!</p>
+                    <p>Your raffle ticket details:</p>
+                    <div class="voucher-code">${fullname} - ${email}</div>
+                    <p>Thank you for participating in our raffle. We wish you the best of luck!</p>
+                    <p>Meanwhile, feel free to explore our latest products and offers:</p>
+                    <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">Visit Yeilva Store</a></p>
+                </div>
+                <div class="footer">
+                    <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>`,
+    };
+
+    try {
+        await sgMail.send(msg);
+        console.log('Email sent successfully');
+    } catch (error) {
+        console.error('Error sending email:', error);
+    }
+};
+
+// Endpoint to randomly select two winning tickets
+app.get('/openraffle/winner', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT fullname, email FROM raffleopen');
+    const participants = result.rows;
+
+    if (participants.length === 0) {
+      return res.status(404).json({ error: 'No participants found' });
+    }
+
+    const shuffled = participants.sort(() => 0.5 - Math.random());
+    const firstWinner = shuffled[0];
+    const secondWinner = shuffled[1];
+
+    res.json({
+      firstWinnerEmail: firstWinner.email,
+      firstWinnerName: firstWinner.fullname,
+      secondWinnerEmail: secondWinner.email,
+      secondWinnerName: secondWinner.fullname,
+    });
+  } catch (error) {
+    console.error('Error selecting winners:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 
 const PORT = process.env.PORT || 3001;
