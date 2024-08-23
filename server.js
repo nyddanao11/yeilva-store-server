@@ -1774,7 +1774,6 @@ const sendEmail = async (email, voucherCode) => {
     }
 };
 
-
 app.post('/openraffle', async (req, res) => {
   const { fullname, email, deviceInfo } = req.body;
 
@@ -1786,8 +1785,12 @@ app.post('/openraffle', async (req, res) => {
       return res.status(400).json({ error: 'Email already registered' });
     }
 
-    // Check if the device already exists
-    const userDevice = await pool.query('SELECT * FROM raffleopen WHERE device_info @> $1::jsonb', [JSON.stringify(deviceInfo)]);
+    // Check if the device already exists by comparing specific fields from the JSON
+    const userDevice = await pool.query(
+      `SELECT * FROM raffleopen WHERE device_info::text = $1::text`, 
+      [JSON.stringify(deviceInfo)]
+    );
+
     if (userDevice.rows.length > 0) {
       return res.status(400).json({ error: 'User already registered' });
     }
@@ -1812,6 +1815,7 @@ app.post('/openraffle', async (req, res) => {
     }
   }
 });
+
 
 
 const openRaffleEmail = async (email, fullname) => {
