@@ -280,7 +280,7 @@ const hash = bcrypt.hashSync(password, salt);
       <p>If you have any questions, feel free to reply to this email.</p>
 
       <p>Best regards,</p>
-      <p>YeilvaSTORE</p>
+      <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
       </div>
       </body>
       </html>`,
@@ -340,7 +340,6 @@ const cleanNumericValue = (value) => {
   // Remove any non-numeric characters except decimal points
   return parseFloat(value.replace(/[^\d.-]/g, ''));
 };
-
 
 app.post('/checkout', async (req, res) => {
   const {
@@ -423,7 +422,7 @@ app.post('/checkout', async (req, res) => {
           <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
 
           <p>Best regards,</p>
-          <p>YeilvaSTORE</p>
+         <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
         </div>
       </body>
     </html>
@@ -433,7 +432,7 @@ app.post('/checkout', async (req, res) => {
        
       // Send an email with the checkout information to the admin
 const checkoutInfoEmailToAdmin = {
-  to: 'ayeilva@yahoo.com',
+  to: 'ayeilvzarong@gmail.com',
   from: 'yeilvastore@gmail.com',
   subject: 'New Checkout Information',
   html: `
@@ -467,7 +466,7 @@ const checkoutInfoEmailToAdmin = {
           <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
 
           <p>Best regards,</p>
-          <p>YeilvaSTORE</p>
+         <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
         </div>
       </body>
     </html>
@@ -548,10 +547,11 @@ app.get('/api/checkoutdata', async (req, res) => {
 });
 
 
-app.post('/installmentusers', async (req, res) => {
+
+app.post('/installmentusers', upload.single('installmentImage'), async (req, res) => {
   const {
     firstname,
-    lastname, 
+    lastname,
     email,
     address,
     province,
@@ -559,18 +559,24 @@ app.post('/installmentusers', async (req, res) => {
     name,
     quantity,
     total,
-     paymentOption, 
+    paymentOption,
   } = req.body;
 
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() + 7); // Add 7 days to the current date
-    const endDate = new Date();
-    endDate.setDate(endDate.getDate() + 32); // Add 32 days to the current date
+  // Validation: Check if address is provided
+  if (!address) {
+    return res.status(400).json({ error: 'Address is required.' });
+  }
 
-    const formattedStartDate = startDate.toDateString(); // Convert to a readable date format
-    const formattedEndDate = endDate.toDateString(); // Convert to a readable date format
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() + 7); // Add 7 days to the current date
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + 32); // Add 32 days to the current date
 
-   const user = await pool.query('SELECT status FROM installmentusers WHERE email = $1 ORDER BY checkout_date DESC LIMIT 1', [email]);
+  const formattedStartDate = startDate.toDateString(); // Convert to a readable date format
+  const formattedEndDate = endDate.toDateString(); // Convert to a readable date format
+
+  try {
+    const user = await pool.query('SELECT status FROM installmentusers WHERE email = $1 ORDER BY checkout_date DESC LIMIT 1', [email]);
 
     if (user.rows.length > 0) {
       const lastStatus = user.rows[0].status;
@@ -579,147 +585,154 @@ app.post('/installmentusers', async (req, res) => {
       }
     }
 
-    if (total < 500){
-      return res.status(500).json({error:'You cannot avail installemnt payment option if your total purchases is below 500'});
+    if (total < 500) {
+      return res.status(500).json({ error: 'You cannot avail installment payment option if your total purchases is below 500' });
     }
 
-  try {
-    // Start a database transaction
-    await db.transaction(async (trx) => {
-      // Generate the order number
-      const orderNumber = generateOrderNumber();
+    const params = {
+      Bucket: BucketName,
+      Key: req.file.originalname,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype,
+    };
 
-      // Insert data into the 'checkout' table, including the order number and new fields
-      const insertedOrder = await trx('installmentusers')
-        .insert({
-          firstname, 
-          lastname, 
-          email,
-          address,
-          province,
-          phone,
-          checkout_date: new Date(),
-          name,
-          quantity,
-          total,  
-          order_number: orderNumber,
-          payment_option: paymentOption,
-          status:'pending',
-        })
-        .returning('*');
+    const imageUrl = `https://${params.Bucket}.s3.amazonaws.com/${params.Key}`;
 
-      // Send a success response with the inserted data
-      res.json({ success: true, checkoutData: insertedOrder });
+    const cleanedTotal = parseFloat(total.replace(/[^0-9.-]+/g, ""));
+    if (isNaN(cleanedTotal)) {
+      return res.status(400).json({ error: 'Invalid total amount' });
+    }
 
+    const orderNumber = generateOrderNumber();
 
+    const insertedOrder = await pool.query(
+      `INSERT INTO installmentusers (firstname, lastname, email, address, province, phone, checkout_date, name, quantity, total, order_number, payment_option, status, usersimage) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13) 
+       RETURNING *`,
+      [
+        firstname,
+        lastname,
+        email,
+        address,
+        province,
+        phone,
+        new Date(),
+        name,
+        quantity,
+        cleanedTotal,  // Use the cleanedTotal here
+        orderNumber,
+        paymentOption,
+        imageUrl,
+      ]
+    );
 
-        // Send an email with the checkout information to the customer
-        const checkoutEmailToCustomer = {
-          to: email,
-          from: 'yeilvastore@gmail.com',
-          subject: 'Checkout Information',
-         html: `
-    <html>
-      <body>
-        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; padding: 20px;">
-          <h1 style="text-align: center;">Thank You for Your Order!</h1>
+    // Prepare email data for customer
+    const checkoutEmailToCustomer = {
+      to: email,
+      from: 'yeilvastore@gmail.com',
+      subject: 'Checkout Information',
+      html: `
+        <html>
+          <body>
+            <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; padding: 20px;">
+              <h1 style="text-align: center;">Thank You for Your Order!</h1>
+              <p>Dear ${firstname} ${lastname},</p>
+              <p>We wanted to express our heartfelt thanks for choosing YeilvaSTORE for your recent purchase. Your order # ${orderNumber} has been received and is now being processed.</p>
+              <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Order Details</h3>
+              <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+                <p><strong>Product:</strong> ${name}</p>
+                <p><strong>Total Amount:</strong> ${total}</p>
+                <p><strong>Payment Method:</strong> ${paymentOption}</p>
+                <p>Your first Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
+                <p><strong>Uploaded Image:</strong></p>
+                <img src="${imageUrl}" alt="Uploaded Image" style="max-width: 100%; height: auto;" />
+              </div>
+              <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
+              <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+                <p><strong>Address:</strong> ${address}</p>
+                <p><strong>Province:</strong> ${province}</p>
+                <p><strong>Phone:</strong> ${phone}</p>
+              </div>
+              <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at yeilvastore@gmail.com or 09497042268. We're here to help!</p>
+              <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
+              <p>Best regards,</p>
+              <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+            </div>
+          </body>
+        </html>
+      `,
+    };
 
-          <p>Dear ${firstname} ${lastname},</p>
-          
-          <p>We wanted to express our heartfelt thanks for choosing YeilvaSTORE for your recent purchase. Your order # ${orderNumber} has been received and is now being processed.</p>
+    // Prepare email data for admin
+    const checkoutEmailToAdmin = async () => {
+      const sendGridApiKey = process.env.SENDGRID_API_KEY;
+      const sendGridEndpoint = 'https://api.sendgrid.com/v3/mail/send';
 
-          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Order Details</h3>
+      const imageBuffer = req.file.buffer;
+      const imageBase64 = imageBuffer.toString('base64');
 
-          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
-            <p><strong>Product:</strong> ${name}</p>
-            <p><strong>Total Amount:</strong> ${total}</p>
-            <p><strong>Payment Method:</strong> ${paymentOption}</p>
-            <p>Your first Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
-          </div>
+      const sendGridData = {
+        personalizations: [
+          {
+            to: [{ email: 'ayeilvzarong@gmail.com' }],
+            subject: 'New Checkout Information',
+          },
+        ],
+        from: { email: 'yeilvastore@gmail.com' },
+        content: [
+          {
+            type: 'text/html',
+            value: `
+              <html>
+                <body>
+                  <h1>New Order Received</h1>
+                  <p>Dear Admin,</p>
+                  <p>A new order has been received. Details are as follows:</p>
+                  <p>Product: ${name}</p>
+                  <p>Total Amount: ${total}</p>
+                  <p>Payment Method: ${paymentOption}</p>
+                   <p>First Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
+                  <p>Shipping Address: ${address}, ${province}, Phone: ${phone}</p>
+                </body>
+              </html>`,
+          },
+        ],
+        attachments: [
+          {
+            content: imageBase64,
+            filename: 'uploaded_image.jpg',
+            type: 'image/jpeg',
+            disposition: 'attachment',
+          },
+        ],
+      };
 
-          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
+      try {
+        await axios.post(sendGridEndpoint, sendGridData, {
+          headers: {
+            Authorization: `Bearer ${sendGridApiKey}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        console.log('Admin email sent successfully');
+      } catch (error) {
+        console.error('Error sending admin email:', error);
+        res.status(500).json({ error: 'Failed to send admin email' });
+      }
+    };
 
-          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
-            <p><strong>Address:</strong> ${address}</p>
-            <p><strong>Province:</strong> ${province}</p>
-            <p><strong>Phone:</strong> ${phone}</p>
-          </div>
+    // Send the emails
+    await sgMail.send(checkoutEmailToCustomer);
+    await checkoutEmailToAdmin();  // Call the admin email function
 
-          <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at [yeilvastore@gmail.com] or [09497042268]. We're here to help!</p>
+    console.log('Checkout information emails sent successfully');
 
-          <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
+    // Respond to the client
+    res.json({ success: true, checkoutData: insertedOrder });
 
-          <p>Best regards,</p>
-          <p>YeilvaSTORE</p>
-        </div>
-      </body>
-    </html>
-          `,
-        }; 
-
-       
-      // Send an email with the checkout information to the admin
-const checkoutEmailToAdmin = {
-  to: 'ayeilva@yahoo.com',
-  from: 'yeilvastore@gmail.com',
-  subject: 'New Checkout Information',
-  html: `
-    <html>
-      <body>
-        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; padding: 20px;">
-          <h1 style="text-align: center;">Thank You for Your Order!</h1>
-
-          <p>Dear ${firstname} ${lastname},</p>
-          
-          <p>We wanted to express our heartfelt thanks for choosing YeilvaSTORE for your recent purchase. Your order # ${orderNumber} has been received and is now being processed.</p>
-
-          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Order Details</h3>
-
-          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
-            <p><strong>Product:</strong> ${name}</p>
-            <p><strong>Total Amount:</strong> ${total}</p>
-            <p><strong>Payment Method:</strong> ${paymentOption}</p>
-            <p>Your first Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
-          </div>
-
-          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
-
-          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
-            <p><strong>Address:</strong> ${address}</p>
-            <p><strong>Province:</strong> ${province}</p>
-            <p><strong>Phone:</strong> ${phone}</p>
-          </div>
-
-          <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at [yeilvastore@gmail.com] or [09497042268]. We're here to help!</p>
-
-          <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
-
-          <p>Best regards,</p>
-          <p>YeilvaSTORE</p>
-        </div>
-      </body>
-    </html>
-  `,
-};
-
-
-       try {
-  // Send checkout info email to customer
-  await sgMail.send(checkoutEmailToCustomer);
-  // Send checkout info email to admin
-  await sgMail.send(checkoutEmailToAdmin);
-  console.log('Checkout information emails sent successfully');
-} catch (error) {
-  console.error('Error sending emails:', error);
-  // Handle email sending errors
-}
-
-   
-      console.log('Checkout information emails sent successfully');
-    }); // Close the try block here
-  } catch (error) {
+ } catch (error) {
     console.error('Error during checkout:', error);
-    res.status(500).json('An error occurred during checkout');
+    res.status(500).json({ error: 'Internal server error during checkout' }); // Fixed this line
   }
 });
 
@@ -917,10 +930,6 @@ app.post('/change-password', async (req, res) => {
 });
 
 
-
-
-
-
 // Function to generate a random application number
 function generateApplicationNumber() {
   const randomBytes = crypto.randomBytes(4); // Adjust the number of bytes as needed
@@ -984,7 +993,7 @@ async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, 
   const sendGridData = {
     personalizations: [
       {
-        to: [{ email: 'ayeilva@yahoo.com' }],
+        to: [{ email: 'ayeilvzarong@gmail.com' }],
         subject: 'New Loan Application',
       },
     ],
