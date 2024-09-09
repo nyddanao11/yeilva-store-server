@@ -449,6 +449,7 @@ const checkoutInfoEmailToAdmin = {
 
           <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
             <p><strong>Product:</strong> ${name}</p>
+             <p>Email Address: ${email}</p>
             <p><strong>Total Amount:</strong> ${total}</p>
             <p><strong>Payment Method:</strong> ${paymentOption}</p>
           </div>
@@ -688,6 +689,8 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
                   <h1>New Order Received</h1>
                   <p>Dear Admin,</p>
                   <p>A new order has been received. Details are as follows:</p>
+                   <p>username: ${firstname} ${lastname},</p>
+                  <p>Email Address: ${email}</p>
                   <p>Product: ${name}</p>
                   <p>Total Amount: ${total}</p>
                   <p>Payment Method: ${paymentOption}</p>
