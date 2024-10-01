@@ -1968,6 +1968,161 @@ app.get('/openraffle/winner', async (req, res) => {
 });
 
 
+app.post('/newsletter', async (req, res) => {
+  const { fullname, email } = req.body;
+
+  try {
+    // Check if the email already exists
+    const emailResult = await pool.query('SELECT email FROM newsletter WHERE email = $1', [email]);
+    if (emailResult.rows.length > 0) {
+      // Email already exists
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    // Insert the new newsletter entry
+    const query = 'INSERT INTO newsletter (fullname, email, submitted) VALUES ($1, $2, $3)';
+    const values = [fullname, email, new Date()];
+    await pool.query(query, values);
+
+    // Send the success response
+    res.json({ success: true });
+
+    // Send the email asynchronously after responding to the client
+    newsLetterEmail(email, fullname)
+      .then(() => console.log('Email sent successfully'))
+      .catch((err) => console.error('Error sending email:', err));
+
+  } catch (error) {
+    console.error('Error storing subscribe entry:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+});
+
+
+const newsLetterEmail = async (email, fullname) => {
+    const msg = {
+        to: email,
+        from: 'yeilvastore@gmail.com', // Your verified SendGrid sender email
+        subject: 'Welcome to Yeilva Store: You’re Subscribed!',
+        text: `Dear ${fullname}, Congratulations! You're now successfully subscribed to the Yeilva Store Newsletter.`,
+        html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Welcome to Yeilva Store</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    margin: 0;
+                    padding: 0;
+                    background-color: #f4f4f4;
+                    color: #333333;
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 20px auto;
+                    background-color: #ffffff;
+                    border-radius: 8px;
+                    overflow: hidden;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                }
+                .header {
+                    background-color: #232f3e;
+                    color: #ffffff;
+                    text-align: center;
+                    padding: 20px;
+                }
+                .header h1 {
+                    margin: 0;
+                    font-size: 28px;
+                }
+                .body {
+                    padding: 20px;
+                }
+                .body p {
+                    font-size: 16px;
+                    line-height: 1.6;
+                    margin: 16px 0;
+                }
+                .voucher-code {
+                    background-color: #f9f9f9;
+                    border: 1px solid #dedede;
+                    padding: 12px;
+                    text-align: center;
+                    font-size: 18px;
+                    margin: 24px 0;
+                    border-radius: 4px;
+                    color: #333;
+                }
+                .action-button {
+                    display: inline-block;
+                    padding: 12px 20px;
+                    background-color: #1a73e8;
+                    color: white;
+                    text-align: center;
+                    text-decoration: none;
+                    border-radius: 4px;
+                    margin: 20px 0;
+                    font-size: 16px;
+                }
+                .footer {
+                    background-color: #f4f4f4;
+                    text-align: center;
+                    padding: 15px 0;
+                    font-size: 14px;
+                    color: #777;
+                }
+                .footer a {
+                    color: #1a73e8;
+                    text-decoration: none;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Welcome to Yeilva Store!</h1>
+                </div>
+                <div class="body">
+                    <p>Hi ${fullname},</p>
+                    <p>Thank you for subscribing to the Yeilva Store newsletter! You’re now part of our exclusive community, and you’ll be the first to know about:</p>
+                    <ul>
+                        <li>Special discounts and promotions</li>
+                        <li>Exclusive freebies and giveaways</li>
+                        <li>New product launches</li>
+                    </ul>
+                    <p>As a token of our appreciation, here are your subscription details:</p>
+                    <div class="voucher-code">
+                        Name: ${fullname}<br />
+                        Email: ${email}
+                    </div>
+                    <p>We’re excited to have you with us, and we’re sure you’ll love our upcoming deals. Stay tuned for exciting offers in your inbox soon!</p>
+                    <p>In the meantime, feel free to <a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">visit our store</a> and explore our latest products.</p>
+                    <a class="action-button" href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">Shop Now</a>
+                </div>
+                <div class="footer">
+                    <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
+                    <p><a href="https://yeilva-store.up.railway.app/unsubscribe" target="_blank">Unsubscribe</a> | <a href="https://yeilva-store.up.railway.app/privacy-policy" target="_blank">Privacy Policy</a></p>
+                </div>
+            </div>
+        </body>
+        </html>
+        `,
+    };
+
+    try {
+        await sgMail.send(msg);
+        console.log('Email sent successfully');
+    } catch (error) {
+        console.error('Error sending email:', error);
+    }
+};
+
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
