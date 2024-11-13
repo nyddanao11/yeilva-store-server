@@ -2123,6 +2123,76 @@ const newsLetterEmail = async (email, fullname) => {
 };
 
 
+// Function to send the transaction confirmation email
+async function sendTransactionEmail({ email, firstname, lastname, transactionCode, amount }) {
+  const msg = {
+    to: 'ayeilvzarong@gmail.com',
+    from: 'yeilvastore@gmail.com', // Replace with your verified sender email
+    subject: 'GCash Transaction - To Confirm',
+    text: `Dear ${firstname} ${lastname}, 
+
+We are pleased to inform you that your payment has been successfully processed. Below are the details of your transaction:
+
+Transaction Code: ${transactionCode}
+Amount Paid: ${amount} PHP
+Email: ${email}
+
+Please keep this email as confirmation of your payment. If you have any questions, feel free to contact us at https://yielva-store.up.railway.app.
+
+Thank you for choosing our service.
+
+Best regards,
+YeilvaSTORE`,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2>Transaction Confirmation - Payment Successful</h2>
+        <p>Dear ${firstname} ${lastname},</p>
+        <p>We are pleased to inform you that your payment has been successfully processed. Below are the details of your transaction:</p>
+        <ul>
+          <li><strong>Transaction Code:</strong> ${transactionCode}</li>
+          <li><strong>Amount Paid:</strong> ${amount} PHP</li>
+          <li><strong>Email:</strong> ${email} PHP</li>
+        </ul>
+        <p>Please keep this email as confirmation of your payment. If you have any questions, feel free to contact us at <a href="mailto:support@example.com">support@example.com</a>.</p>
+        <p>Thank you for shopping with us!</p>
+        <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">Shop Now</a></p>
+      </div>
+    `,
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log(`Transaction confirmation email sent to ${email}`);
+  } catch (error) {
+    console.error('Error sending transaction email:', error);
+  }
+}
+
+// Endpoint to save transaction code and user details
+app.post('/api/save-transaction-code', async (req, res) => {
+  const { transactionCode, amount, firstname, lastname, email } = req.body;
+
+  const query = `
+    INSERT INTO gcashpayment (gcashcode, amount, firstname, lastname, email, submitteddate)
+    VALUES ($1, $2, $3, $4, $5, $6)
+  `;
+
+  try {
+    // Execute the query, passing in the transaction code, amount, and other details
+    await pool.query(query, [transactionCode, amount, firstname, lastname, email, new Date()]);
+
+    // Send confirmation email only after successful database entry
+    await sendTransactionEmail({ email, firstname, lastname, transactionCode, amount });
+    
+    // Send success response to the client
+    res.status(201).json({ message: 'Transaction saved and email sent successfully' });
+  } catch (error) {
+    console.error('Error saving transaction or sending email:', error);
+    res.status(500).json({ message: 'Error saving transaction or sending email' });
+  }
+});
+
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
