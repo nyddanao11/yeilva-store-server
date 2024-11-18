@@ -80,7 +80,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 
 app.use(cors({ 
-  origin: 'https://yeilva-store.up.railway.app', 
+  origin: 'https://yeilvastore.com', 
   credentials: true,
 }));
 
@@ -264,7 +264,7 @@ const hash = bcrypt.hashSync(password, salt);
     });
 
     // Craft the confirmation link
-    const verificationLink = `https://yeilva-store.up.railway.app/confirm?token=${token}`;
+    const verificationLink = `https://yeilvastore.com/confirm?token=${token}`;
 
     // Craft the confirmation email
     const msg = {
@@ -280,7 +280,7 @@ const hash = bcrypt.hashSync(password, salt);
       <p>If you have any questions, feel free to reply to this email.</p>
 
       <p>Best regards,</p>
-      <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+      <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
       </div>
       </body>
       </html>`,
@@ -422,7 +422,7 @@ app.post('/checkout', async (req, res) => {
           <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
 
           <p>Best regards,</p>
-         <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+         <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
         </div>
       </body>
     </html>
@@ -467,7 +467,7 @@ const checkoutInfoEmailToAdmin = {
           <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
 
           <p>Best regards,</p>
-         <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+         <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
         </div>
       </body>
     </html>
@@ -657,7 +657,7 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
               <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at yeilvastore@gmail.com or 09497042268. We're here to help!</p>
               <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
               <p>Best regards,</p>
-              <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+              <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
             </div>
           </body>
         </html>
@@ -1309,7 +1309,7 @@ async function isValidCredentials(username, password) {
 
 
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://yeilva-store.up.railway.app');
+  res.header('Access-Control-Allow-Origin', 'https://yeilvastore.com');
   res.header('Access-Control-Allow-Credentials', true);
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
   next();
@@ -1768,7 +1768,7 @@ const sendEmail = async (email, voucherCode) => {
                     <p>We are excited to offer you a 15% discount voucher for your next purchase. Use the code below at checkout:</p>
                     <div class="voucher-code">${voucherCode}</div>
                     <p>Thank you for shopping with us!</p>
-                    <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">Shop Now</a></p>
+                    <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Shop Now</a></p>
                 </div>
                 <div class="footer">
                     <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
@@ -1923,7 +1923,7 @@ const openRaffleEmail = async (email, fullname) => {
                     <div class="voucher-code">${fullname} - ${email}</div>
                     <p>Thank you for participating in our raffle. We wish you the best of luck!</p>
                     <p>Meanwhile, feel free to explore our latest products and offers:</p>
-                    <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">Visit Yeilva Store</a></p>
+                    <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Visit Yeilva Store</a></p>
                 </div>
                 <div class="footer">
                     <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
@@ -2106,7 +2106,7 @@ const newsLetterEmail = async (email, fullname) => {
                 </div>
                 <div class="footer">
                     <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
-                    <p><a href="https://yeilva-store.up.railway.app/unsubscribe" target="_blank">Unsubscribe</a> | <a href="https://yeilva-store.up.railway.app/privacy-policy" target="_blank">Privacy Policy</a></p>
+                    <p><a href="https://yeilvastore.com/unsubscribe" target="_blank">Unsubscribe</a> | <a href="https://yeilva-store.up.railway.app/privacy-policy" target="_blank">Privacy Policy</a></p>
                 </div>
             </div>
         </body>
@@ -2155,7 +2155,7 @@ YeilvaSTORE`,
         </ul>
         <p>Please keep this email as confirmation of your payment. If you have any questions, feel free to contact us at <a href="mailto:support@example.com">support@example.com</a>.</p>
         <p>Thank you for shopping with us!</p>
-        <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">Shop Now</a></p>
+        <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Shop Now</a></p>
       </div>
     `,
   };
@@ -2189,6 +2189,66 @@ app.post('/api/save-transaction-code', async (req, res) => {
   } catch (error) {
     console.error('Error saving transaction or sending email:', error);
     res.status(500).json({ message: 'Error saving transaction or sending email' });
+  }
+});
+
+// Modify the endpoint to use multer for file handling
+app.post('/gcashsettlement', upload.single('image'), async (req, res) => {
+  const { firstname, lastname, email, amount, transactionCode, purpose } = req.body;
+  const imageFile = req.file;
+console.log('Uploaded file:', imageFile);
+  try {
+    // Insert form data into the gcash_settlements table
+    const result = await pool.query(
+      `INSERT INTO gcash_settlements (firstname, lastname, email, amount, transaction_code, purpose, image_path) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [firstname, lastname, email, parseFloat(amount), transactionCode, purpose, imageFile.path]
+    );
+
+    const transaction = result.rows[0];
+
+     const imageBuffer = req.file.buffer;
+      const imageBase64 = imageBuffer.toString('base64');
+
+       // Set up the email content and attach the QR code image
+    const emailContent = {
+      to: email,
+      from: 'yeilvastore@gmail.com', // Replace with your verified SendGrid sender
+      subject: 'Your GCash Settlement Details',
+      html: `
+        <p>Dear ${firstname} ${lastname},</p>
+        <p>Thank you for using our GCash settlement service. Please find the details below to settle your amount:</p>
+        <ul>
+          <li><strong>Amount:</strong> PHP ${amount}</li>
+          <li><strong>Transaction Code:</strong> ${transactionCode}</li>
+        </ul>
+        <p>Attached is the QR code for payment.</p>
+        <p>Alternatively, you can pay through GCash account <strong>09497042268</strong>.</p>
+        <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Visit Yeilva Store</a></p>
+        <p>Best regards,</p>
+        <p>Yeilva Store Team</p>
+      `,
+      attachments: [
+        {
+          content: imageBase64, // Encode image to base64
+          filename: 'GCash_QR_Code.jpg',
+          type: 'image/jpg',
+          disposition: 'attachment',
+        },
+      ],
+    };
+
+    // Send the email
+    await sgMail.send(emailContent);
+
+    // Respond to the frontend
+    res.status(200).json({
+      message: 'Transaction recorded successfully and email sent!',
+      transaction,
+    });
+  } catch (error) {
+    console.error('Error processing transaction:', error);
+    res.status(500).json({ error: 'An error occurred while processing the transaction.' });
   }
 });
 
