@@ -1307,11 +1307,18 @@ async function isValidCredentials(username, password) {
   }
 }
 
+const allowedOrigins = ['https://yeilvastore.com', 'https://www.yeilvastore.com'];
 
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://yeilvastore.com');
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin); // Dynamically set the allowed origin
+  }
+
   res.header('Access-Control-Allow-Credentials', true);
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   next();
 });
 
@@ -1329,8 +1336,8 @@ app.post('/api/adminlogin', async (req, res) => {
 
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1hr' });
      
-      res.cookie('jwtToken', token, { sameSite: 'None', httpOnly: true });
-       res.cookie('cherry','red');
+      res.cookie('jwtToken', token, { sameSite: 'None', secure: true, httpOnly: true });
+       res.cookie('cherry','red', { sameSite: 'None', secure: true});
 
       // Send a success response
       res.json({ message: 'Login successful' });
