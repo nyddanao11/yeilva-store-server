@@ -1328,19 +1328,8 @@ app.post('/api/adminlogin', async (req, res) => {
       };
 
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1hr' });
-       // Log the token before setting it as a cookie
-      // console.log('JWT Token:', token);
-
-      // // Set the token as an HTTP-only cookie if in localhost set secure to false
-      //  res.cookie('jwtToken', token, {
-      //   httpOnly: true,
-      //  secure: false, // Use true for production, false for localhost
-      //   sameSite: 'None',
-      //   expiresIn: 3600000,
-      //   path: '/',
-      //   domain: 'localhost',
-      // });
-        res.cookie('jwtToken', token,{ httpOnly: true});
+     
+        res.cookie('jwtToken', token, sameSite: 'None', { httpOnly: true});
        res.cookie('cherry','red');
 
       // Send a success response
