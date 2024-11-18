@@ -1329,7 +1329,7 @@ app.post('/api/adminlogin', async (req, res) => {
 
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1hr' });
      
-        res.cookie('jwtToken', token, sameSite: 'None', { httpOnly: true});
+      res.cookie('jwtToken', token, { sameSite: 'None', httpOnly: true });
        res.cookie('cherry','red');
 
       // Send a success response
