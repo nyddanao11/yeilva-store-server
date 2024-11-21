@@ -2121,65 +2121,104 @@ const newsLetterEmail = async (email, fullname) => {
 
 // Function to send the transaction confirmation email
 async function sendTransactionEmail({ email, firstname, lastname, transactionCode, amount }) {
-  const msg = {
+  const internalEmail = {
     to: 'ayeilvzarong@gmail.com',
-    from: 'yeilvastore@gmail.com', // Replace with your verified sender email
-    subject: 'GCash Transaction - To Confirm',
-    text: `Dear ${firstname} ${lastname}, 
+    from: 'yeilvastore@gmail.com',
+    subject: 'GCash Transaction - Confirmation Needed',
+    text: `Dear Team,
 
-We are pleased to inform you that your payment has been successfully processed. Below are the details of your transaction:
+A payment transaction has been received. Below are the details for confirmation:
 
 Transaction Code: ${transactionCode}
 Amount Paid: ${amount} PHP
-Email: ${email}
+Customer Email: ${email}
 
-Please keep this email as confirmation of your payment. If you have any questions, feel free to contact us at https://yielva-store.up.railway.app.
-
-Thank you for choosing our service.
+Please verify and process this transaction accordingly.
 
 Best regards,
 YeilvaSTORE`,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-        <h2>Transaction Confirmation - Payment Successful</h2>
-        <p>Dear ${firstname} ${lastname},</p>
-        <p>We are pleased to inform you that your payment has been successfully processed. Below are the details of your transaction:</p>
+        <h2>Transaction Confirmation Needed</h2>
+        <p>Dear Team,</p>
+        <p>A payment transaction has been received. Below are the details for confirmation:</p>
         <ul>
           <li><strong>Transaction Code:</strong> ${transactionCode}</li>
           <li><strong>Amount Paid:</strong> ${amount} PHP</li>
-          <li><strong>Email:</strong> ${email} PHP</li>
+          <li><strong>Customer Email:</strong> ${email}</li>
         </ul>
-        <p>Please keep this email as confirmation of your payment. If you have any questions, feel free to contact us at <a href="mailto:support@example.com">support@example.com</a>.</p>
-        <p>Thank you for shopping with us!</p>
-        <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Shop Now</a></p>
+        <p>Please verify and process this transaction accordingly.</p>
+        <p>Best regards,<br>YeilvaSTORE</p>
+      </div>
+    `,
+  };
+
+  const customerEmail = {
+    to: email,
+    from: 'yeilvastore@gmail.com',
+    subject: 'GCash Transaction - Payment Received',
+    text: `Dear ${firstname} ${lastname},
+
+Thank you for your payment. Below are the details of your transaction:
+
+Transaction Code: ${transactionCode}
+Amount Paid: ${amount} PHP
+Email: ${email}
+
+Please keep this email as confirmation of your payment. If you have any questions, contact us at yeilvastore.
+
+Thank you for choosing YeilvaSTORE.
+
+Best regards,
+YeilvaSTORE`,
+    html: `
+      <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+        <h2>Transaction Confirmation</h2>
+        <p>Dear ${firstname} ${lastname},</p>
+        <p>Thank you for your payment. Below are the details of your transaction:</p>
+        <ul>
+          <li><strong>Transaction Code:</strong> ${transactionCode}</li>
+          <li><strong>Amount Paid:</strong> ${amount} PHP</li>
+          <li><strong>Email:</strong> ${email}</li>
+        </ul>
+        <p>Please keep this email as confirmation of your payment. If you have any questions, contact us at <a href="mailto:yeilvastore@gmail.com">yeilvastore</a>.</p>
+        <p>Thank you for choosing YeilvaSTORE.</p>
+        <p>Best regards,<br>YeilvaSTORE</p>
+        <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Visit Our Store</a></p>
       </div>
     `,
   };
 
   try {
-    await sgMail.send(msg);
-    console.log(`Transaction confirmation email sent to ${email}`);
+    // Send email to the internal team
+    await sgMail.send(internalEmail);
+    console.log(`Internal transaction email sent successfully to ${internalEmail.to}`);
+
+    // Send confirmation email to the customer
+    await sgMail.send(customerEmail);
+    console.log(`Customer confirmation email sent successfully to ${email}`);
   } catch (error) {
-    console.error('Error sending transaction email:', error);
+    console.error('Error sending transaction emails:', error);
   }
 }
+
 
 // Endpoint to save transaction code and user details
 app.post('/api/save-transaction-code', async (req, res) => {
   const { transactionCode, amount, firstname, lastname, email } = req.body;
 
   const query = `
-    INSERT INTO gcashpayment (gcashcode, amount, firstname, lastname, email, submitteddate)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO gcashpayment (gcashcode, amount, firstname, lastname, email, submitteddate, status)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
   `;
 
   try {
-    // Execute the query, passing in the transaction code, amount, and other details
-    await pool.query(query, [transactionCode, amount, firstname, lastname, email, new Date()]);
+    // Execute the query, passing in all the parameters including the status
+    await pool.query(query, [transactionCode, amount, firstname, lastname, email, new Date(), 'none']);
 
     // Send confirmation email only after successful database entry
     await sendTransactionEmail({ email, firstname, lastname, transactionCode, amount });
-    
+
     // Send success response to the client
     res.status(201).json({ message: 'Transaction saved and email sent successfully' });
   } catch (error) {
@@ -2245,6 +2284,105 @@ console.log('Uploaded file:', imageFile);
   } catch (error) {
     console.error('Error processing transaction:', error);
     res.status(500).json({ error: 'An error occurred while processing the transaction.' });
+  }
+});
+
+
+app.post('/api/booking', async (req, res) => {
+  const {
+    fullName,
+    email,
+    departureCity,
+    arrivalCity,
+    departureDate,
+    returnDate,
+    birthday,
+    address,
+    passengers,
+    phone,
+    class: travelClass,
+    transactionCode,
+    accountName,
+  } = req.body;
+
+  const query = `
+    INSERT INTO bookings
+    (full_name, email, departure_city, arrival_city, departure_date, return_date, birthday, address, passengers, phone, travel_class, submitted_date, transaction_code, account_name)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    RETURNING id
+  `;
+
+  const values = [
+    fullName,
+    email,
+    departureCity,
+    arrivalCity,
+    departureDate || null,
+    returnDate || null,
+    birthday || null,
+    address,
+    passengers,
+    phone.toString(), // Convert phone to a string
+    travelClass,
+    new Date(),
+    transactionCode,
+    accountName,
+  ];
+
+  try {
+    // Insert booking into database
+    const result = await pool.query(query, values);
+    const bookingId = result.rows[0].id;
+
+    // Send email using SendGrid
+    const emailContent = `
+      <h1>Booking Confirmation</h1>
+      <p>Thank you for your booking, ${accountName}!</p>
+      <p><strong>Transaction Code:</strong> ${transactionCode}</p>
+      <p><strong>Passenger Name:</strong> ${fullName}</p>
+      <p><strong>Booking Details:</strong></p>
+      <ul>
+        <li><strong>Departure City:</strong> ${departureCity}</li>
+        <li><strong>Arrival City:</strong> ${arrivalCity}</li>
+        <li><strong>Departure Date:</strong> ${departureDate || 'N/A'}</li>
+        <li><strong>Return Date:</strong> ${returnDate || 'N/A'}</li>
+        <li><strong>Passengers:</strong> ${passengers}</li>
+        <li><strong>Travel Class:</strong> ${travelClass}</li>
+        <li><strong>Phone:</strong> ${phone}</li>
+        <li><strong>Email:</strong> ${email}</li>
+        <li><strong>Address:</strong> ${address}</li>
+
+      </ul>
+       <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Visit Yeilva Store</a></p>
+        <p>Best regards,</p>
+        <p>Yeilva Store Team</p>
+    `;
+
+    const msg = {
+      to: 'ayeilvzarong@gmail.com', // Recipient email
+      from: 'yeilvastore@gmail.com', // Your verified sender email
+      subject: `Booking Confirmation - ${transactionCode}`,
+      html: emailContent,
+    };
+
+    await sgMail.send(msg);
+
+    // Respond with success message
+    res.status(201).json({
+      message: 'Booking successfully created and email sent',
+      bookingId,
+    });
+  } catch (error) {
+    console.error('Error processing booking:', error);
+
+    // Determine if email-related error occurred
+    if (error.response) {
+      console.error(error.response.body);
+    }
+
+    res.status(500).json({
+      message: 'Error processing your booking. Please try again.',
+    });
   }
 });
 
