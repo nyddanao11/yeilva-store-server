@@ -548,7 +548,6 @@ app.get('/api/checkoutdata', async (req, res) => {
 });
 
 
-
 app.post('/installmentusers', upload.single('installmentImage'), async (req, res) => {
   const {
     firstname,
@@ -561,6 +560,8 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
     quantity,
     total,
     paymentOption,
+    installmentPlan,
+    installmentAmount,
   } = req.body;
 
   // Validation: Check if address is provided
@@ -569,9 +570,9 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
   }
 
   const startDate = new Date();
-  startDate.setDate(startDate.getDate() + 7); // Add 7 days to the current date
+  startDate.setDate(startDate.getDate() + 30); // Add 32 days to the current date
   const endDate = new Date();
-  endDate.setDate(endDate.getDate() + 32); // Add 32 days to the current date
+  endDate.setDate(endDate.getDate() + (30 * installmentPlan)); // Add 32 days to the current date
 
   const formattedStartDate = startDate.toDateString(); // Convert to a readable date format
   const formattedEndDate = endDate.toDateString(); // Convert to a readable date format
@@ -599,6 +600,7 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
 
     const imageUrl = `https://${params.Bucket}.s3.amazonaws.com/${params.Key}`;
 
+
     const cleanedTotal = parseFloat(total.replace(/[^0-9.-]+/g, ""));
     if (isNaN(cleanedTotal)) {
       return res.status(400).json({ error: 'Invalid total amount' });
@@ -607,8 +609,8 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
     const orderNumber = generateOrderNumber();
 
     const insertedOrder = await pool.query(
-      `INSERT INTO installmentusers (firstname, lastname, email, address, province, phone, checkout_date, name, quantity, total, order_number, payment_option, status, usersimage) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13) 
+      `INSERT INTO installmentusers (firstname, lastname, email, address, province, phone, checkout_date, name, quantity, total, order_number, payment_option, status, usersimage, selected_plan, selected_amount) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15) 
        RETURNING *`,
       [
         firstname,
@@ -624,8 +626,24 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
         orderNumber,
         paymentOption,
         imageUrl,
+        installmentPlan,
+        installmentAmount,
       ]
     );
+
+   const imageFiles = [
+  {
+    base64: '<base64-encoded-content>',
+    filename: 'image1.jpg',
+    mimeType: 'image/jpeg',
+  },
+  {
+    base64: '<base64-encoded-content>',
+    filename: 'image2.png',
+    mimeType: 'image/png',
+  },
+];
+
 
     // Prepare email data for customer
     const checkoutEmailToCustomer = {
@@ -643,7 +661,9 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
               <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
                 <p><strong>Product:</strong> ${name}</p>
                 <p><strong>Total Amount:</strong> ${total}</p>
-                <p><strong>Payment Method:</strong> ${paymentOption}</p>
+                 <p>Payment Method: ${paymentOption}</p>
+                   <p>Installment Plan: ${installmentPlan}</p>
+                   <p>Installment Payment monthly: ${installmentAmount}</p>
                 <p>Your first Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
                 <p><strong>Uploaded Image:</strong></p>
                 <img src="${imageUrl}" alt="Uploaded Image" style="max-width: 100%; height: auto;" />
@@ -657,7 +677,7 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
               <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at yeilvastore@gmail.com or 09497042268. We're here to help!</p>
               <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
               <p>Best regards,</p>
-              <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+              <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
             </div>
           </body>
         </html>
@@ -694,13 +714,15 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
                   <p>Product: ${name}</p>
                   <p>Total Amount: ${total}</p>
                   <p>Payment Method: ${paymentOption}</p>
+                   <p>Installment Plan: ${installmentPlan}</p>
+                   <p>Installment Payment monthly: ${installmentAmount}</p>
                    <p>First Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
                   <p>Shipping Address: ${address}, ${province}, Phone: ${phone}</p>
                 </body>
               </html>`,
           },
         ],
-        attachments: [
+       attachments: [
           {
             content: imageBase64,
             filename: 'uploaded_image.jpg',
