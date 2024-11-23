@@ -631,19 +631,7 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
       ]
     );
 
-   const imageFiles = [
-  {
-    base64: '<base64-encoded-content>',
-    filename: 'image1.jpg',
-    mimeType: 'image/jpeg',
-  },
-  {
-    base64: '<base64-encoded-content>',
-    filename: 'image2.png',
-    mimeType: 'image/png',
-  },
-];
-
+ 
 
     // Prepare email data for customer
     const checkoutEmailToCustomer = {
@@ -663,7 +651,7 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
                 <p><strong>Total Amount:</strong> ${total}</p>
                  <p>Payment Method: ${paymentOption}</p>
                    <p>Installment Plan: ${installmentPlan}</p>
-                   <p>Installment Payment monthly: ${installmentAmount}</p>
+                   <p>Installment Payment monthly: ₱${installmentAmount}</p>
                 <p>Your first Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
                 <p><strong>Uploaded Image:</strong></p>
                 <img src="${imageUrl}" alt="Uploaded Image" style="max-width: 100%; height: auto;" />
@@ -715,7 +703,7 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
                   <p>Total Amount: ${total}</p>
                   <p>Payment Method: ${paymentOption}</p>
                    <p>Installment Plan: ${installmentPlan}</p>
-                   <p>Installment Payment monthly: ${installmentAmount}</p>
+                   <p>Installment Payment monthly: ₱${installmentAmount}</p>
                    <p>First Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
                   <p>Shipping Address: ${address}, ${province}, Phone: ${phone}</p>
                 </body>
@@ -966,7 +954,7 @@ function generateApplicationNumber() {
 
 app.post('/api/saveLoanForm', upload.single('image'), async (req, res) => {
   try {
-    const { loanAmount, firstName, lastName, email, phone, gcash, address } = req.body;
+    const { loanAmount, firstName, lastName, email, phone, gcash, address, installmentPlan, installmentAmount, birthday} = req.body;
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -981,6 +969,14 @@ app.post('/api/saveLoanForm', upload.single('image'), async (req, res) => {
 
     const imageUrl = `https://${params.Bucket}.s3.amazonaws.com/${params.Key}`;
 
+    const startDate = new Date();
+  startDate.setDate(startDate.getDate() + 30); // Add 32 days to the current date
+  const endDate = new Date();
+  endDate.setDate(endDate.getDate() + (30 * installmentPlan)); // Add 32 days to the current date
+
+  const formattedStartDate = startDate.toDateString(); // Convert to a readable date format
+  const formattedEndDate = endDate.toDateString(); // Convert to a readable date format
+
     const user = await pool.query('SELECT status FROM loanusers WHERE email = $1 ORDER BY created_at DESC LIMIT 1', [email]);
 
     if (user.rows.length > 0) {
@@ -993,13 +989,13 @@ app.post('/api/saveLoanForm', upload.single('image'), async (req, res) => {
     const applicationNumber = generateApplicationNumber();
 
     const result = await pool.query(
-      'INSERT INTO loanusers (loan_amount, first_name, last_name, email, phone_number, gcash_account, address, created_at, application_number, image, status) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, $8, $9, $10) RETURNING id',
-      [loanAmount, firstName, lastName, email, phone, gcash, address, applicationNumber, imageUrl, 'pending']
+      'INSERT INTO loanusers (loan_amount, first_name, last_name, email, phone_number, gcash_account, address, created_at, application_number, image, status, selected_plan, selected_amount,  birthday) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, $8, $9, $10, $11, $12, $13) RETURNING id',
+      [loanAmount, firstName, lastName, email, phone, gcash, address, applicationNumber, imageUrl, 'pending', installmentPlan, installmentAmount, birthday]
     );
 
     const userId = result.rows[0].id;
 
-    await sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, phone, gcash, address, imageUrl);
+    await sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, applicationNumber,phone, gcash, address, imageUrl, installmentPlan, installmentAmount, birthday, formattedStartDate, formattedEndDate);
 
     res.status(200).json({ userId, applicationNumber });
   } catch (error) {
@@ -1008,7 +1004,7 @@ app.post('/api/saveLoanForm', upload.single('image'), async (req, res) => {
   }
 });
 
-async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, phone, gcash, address, imageUrl) {
+async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, applicationNumber,phone, gcash, address, imageUrl, installmentPlan, installmentAmount, birthday, formattedStartDate, formattedEndDate) {
   const sendGridApiKey = process.env.SENDGRID_API_KEY;
   const sendGridEndpoint = 'https://api.sendgrid.com/v3/mail/send';
 
@@ -1026,7 +1022,9 @@ async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, 
     content: [
       {
         type: 'text/plain',
-        value: `New loan application received!\n\nDetails:\nLoan Amount: ₱${loanAmount}\nName: ${firstName} ${lastName}\nEmail: ${email}\nPhone: ${phone}\nGcash Account: ${gcash}\nAddress: ${address}`,
+        value: `New loan application received!\n\nDetails:\nLoan Amount: ₱${loanAmount}\nName: ${firstName} ${lastName}\nApplication no: ${applicationNumber}\nEmail: ${email}
+        \nPhone: ${phone}\nGcash Account: ${gcash}\nAddress: ${address}\ninstallment Plan:${installmentPlan}\ninstallment Amount:₱${installmentAmount}\nBirthday:${birthday}
+         \nFirst Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.`,
       },
     ],
     attachments: [
@@ -1052,7 +1050,6 @@ async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, 
     res.status(500).json({ error: 'Failed to send loan application email' });
   }
 }
-
 
 
 app.get('/api/loandata', async (req, res) => {
