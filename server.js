@@ -16,6 +16,14 @@ const { S3 } = require('@aws-sdk/client-s3');
 const multer = require('multer');
 const multerS3 = require('multer-s3');
 const storage = multer.memoryStorage(); // Use memory storage to get the buffer
+const uploadMultiple= multer({ storage: storage }).fields([
+  { name: 'installmentImage', maxCount: 1 }, // Field for ID image
+  { name: 'selfie', maxCount: 1 }            // Field for selfie image
+]);
+const uploadLoan= multer({ storage: storage }).fields([
+  { name: 'image', maxCount: 1 }, // Field for ID image
+  { name: 'selfieimage', maxCount: 1 }            // Field for selfie image
+]);
 const upload = multer({ storage: storage });
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
@@ -548,7 +556,8 @@ app.get('/api/checkoutdata', async (req, res) => {
 });
 
 
-app.post('/installmentusers', upload.single('installmentImage'), async (req, res) => {
+
+app.post('/installmentusers', uploadMultiple, async (req, res) => {
   const {
     firstname,
     lastname,
@@ -569,6 +578,14 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
     return res.status(400).json({ error: 'Address is required.' });
   }
 
+// Validate that both images are provided
+  const installmentImageFile = req.files['installmentImage'] ? req.files['installmentImage'][0] : null;
+  const selfieImageFile = req.files['selfie'] ? req.files['selfie'][0] : null;
+  if (!installmentImageFile || !selfieImageFile) {
+    return res.status(400).json({ error: 'Both ID image and selfie are required.' });
+  }
+
+ 
   const startDate = new Date();
   startDate.setDate(startDate.getDate() + 30); // Add 32 days to the current date
   const endDate = new Date();
@@ -591,14 +608,22 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
       return res.status(500).json({ error: 'You cannot avail installment payment option if your total purchases is below 500' });
     }
 
-    const params = {
-      Bucket: BucketName,
-      Key: req.file.originalname,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype,
-    };
+    // // Upload images to S3
+    // const uploadToS3 = async (file) => {
+    //   const params = {
+    //     Bucket: BucketName,
+    //     Key: `${Date.now()}-${file.originalname}`,
+    //     Body: file.buffer,
+    //     ContentType: file.mimetype,
+    //   };
 
-    const imageUrl = `https://${params.Bucket}.s3.amazonaws.com/${params.Key}`;
+    //   const result = await s3.upload(params).promise();
+    //   return result.Location; // Returns the S3 URL
+    // };
+
+    // const imageUrl = await uploadToS3(installmentImageFile);
+    // const selfieImageUrl = await uploadToS3(selfieImageFile);
+
 
 
     const cleanedTotal = parseFloat(total.replace(/[^0-9.-]+/g, ""));
@@ -609,8 +634,8 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
     const orderNumber = generateOrderNumber();
 
     const insertedOrder = await pool.query(
-      `INSERT INTO installmentusers (firstname, lastname, email, address, province, phone, checkout_date, name, quantity, total, order_number, payment_option, status, usersimage, selected_plan, selected_amount) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15) 
+      `INSERT INTO installmentusers (firstname, lastname, email, address, province, phone, checkout_date, name, quantity, total, order_number, payment_option, status, usersimage, selected_plan, selected_amount, selfieimage) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14, $15, $16) 
        RETURNING *`,
       [
         firstname,
@@ -625,14 +650,14 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
         cleanedTotal,  // Use the cleanedTotal here
         orderNumber,
         paymentOption,
-        imageUrl,
+     installmentImageFile,
         installmentPlan,
         installmentAmount,
+       selfieImageFile,
       ]
     );
 
  
-
     // Prepare email data for customer
     const checkoutEmailToCustomer = {
       to: email,
@@ -654,7 +679,8 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
                    <p>Installment Payment monthly: ₱${installmentAmount}</p>
                 <p>Your first Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
                 <p><strong>Uploaded Image:</strong></p>
-                <img src="${imageUrl}" alt="Uploaded Image" style="max-width: 100%; height: auto;" />
+                <img src="${ installmentImageFile}" alt="Uploaded Image" style="max-width: 100%; height: auto;" />
+                 <img src="${selfieImageFile}" alt="Uploaded Image" style="max-width: 100%; height: auto;" />
               </div>
               <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
               <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
@@ -672,67 +698,81 @@ app.post('/installmentusers', upload.single('installmentImage'), async (req, res
       `,
     };
 
-    // Prepare email data for admin
-    const checkoutEmailToAdmin = async () => {
-      const sendGridApiKey = process.env.SENDGRID_API_KEY;
-      const sendGridEndpoint = 'https://api.sendgrid.com/v3/mail/send';
+ const checkoutEmailToAdmin = async () => {
+  const sendGridApiKey = process.env.SENDGRID_API_KEY;
+  const sendGridEndpoint = 'https://api.sendgrid.com/v3/mail/send';
 
-      const imageBuffer = req.file.buffer;
-      const imageBase64 = imageBuffer.toString('base64');
 
-      const sendGridData = {
-        personalizations: [
-          {
-            to: [{ email: 'ayeilvzarong@gmail.com' }],
-            subject: 'New Checkout Information',
-          },
-        ],
-        from: { email: 'yeilvastore@gmail.com' },
-        content: [
-          {
-            type: 'text/html',
-            value: `
-              <html>
-                <body>
-                  <h1>New Order Received</h1>
-                  <p>Dear Admin,</p>
-                  <p>A new order has been received. Details are as follows:</p>
-                   <p>username: ${firstname} ${lastname},</p>
-                  <p>Email Address: ${email}</p>
-                  <p>Product: ${name}</p>
-                  <p>Total Amount: ${total}</p>
-                  <p>Payment Method: ${paymentOption}</p>
-                   <p>Installment Plan: ${installmentPlan}</p>
-                   <p>Installment Payment monthly: ₱${installmentAmount}</p>
-                   <p>First Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
-                  <p>Shipping Address: ${address}, ${province}, Phone: ${phone}</p>
-                </body>
-              </html>`,
-          },
-        ],
-       attachments: [
-          {
-            content: imageBase64,
-            filename: 'uploaded_image.jpg',
-            type: 'image/jpeg',
-            disposition: 'attachment',
-          },
-        ],
-      };
+  const installmentImageBase64 = installmentImageFile ? installmentImageFile.buffer.toString('base64') : null;
+  const selfieImageBase64 = selfieImageFile ? selfieImageFile.buffer.toString('base64') : null;
 
-      try {
-        await axios.post(sendGridEndpoint, sendGridData, {
-          headers: {
-            Authorization: `Bearer ${sendGridApiKey}`,
-            'Content-Type': 'application/json',
-          },
-        });
-        console.log('Admin email sent successfully');
-      } catch (error) {
-        console.error('Error sending admin email:', error);
-        res.status(500).json({ error: 'Failed to send admin email' });
-      }
-    };
+  const sendGridData = {
+    personalizations: [
+      {
+        to: [{ email: 'ayeilvzarong@gmail.com' }],
+        subject: 'New Checkout Information',
+      },
+    ],
+    from: { email: 'yeilvastore@gmail.com' },
+    content: [
+      {
+        type: 'text/html',
+        value: `
+          <html>
+            <body>
+              <h1>New Order Received</h1>
+              <p>Dear Admin,</p>
+              <p>A new order has been received. Details are as follows:</p>
+              <p>Username: ${firstname} ${lastname},</p>
+              <p>Email Address: ${email}</p>
+              <p>Product: ${name}</p>
+              <p>Total Amount: ${total}</p>
+              <p>Payment Method: ${paymentOption}</p>
+              <p>Installment Plan: ${installmentPlan}</p>
+              <p>Installment Payment monthly: ₱${installmentAmount}</p>
+              <p>First Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
+              <p>Shipping Address: ${address}, ${province}, Phone: ${phone}</p>
+            </body>
+          </html>`,
+      },
+    ],
+    attachments: [
+      ...(installmentImageBase64
+        ? [
+            {
+              content: installmentImageBase64,
+              filename: 'installment_image.jpg',
+              type: 'image/jpeg',
+              disposition: 'attachment',
+            },
+          ]
+        : []),
+      ...(selfieImageBase64
+        ? [
+            {
+              content: selfieImageBase64,
+              filename: 'selfie_image.jpg',
+              type: 'image/jpeg',
+              disposition: 'attachment',
+            },
+          ]
+        : []),
+    ],
+  };
+
+  try {
+    await axios.post(sendGridEndpoint, sendGridData, {
+      headers: {
+        Authorization: `Bearer ${sendGridApiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    console.log('Admin email sent successfully');
+  } catch (error) {
+    console.error('Error sending admin email:', error);
+    res.status(500).json({ error: 'Failed to send admin email' });
+  }
+};
 
     // Send the emails
     await sgMail.send(checkoutEmailToCustomer);
@@ -951,23 +991,25 @@ function generateApplicationNumber() {
 }
 
 
-
-app.post('/api/saveLoanForm', upload.single('image'), async (req, res) => {
+app.post('/api/saveLoanForm', uploadLoan, async (req, res) => {
   try {
     const { loanAmount, firstName, lastName, email, phone, gcash, address, installmentPlan, installmentAmount, birthday} = req.body;
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
+ // Validate that both images are provided
+  const installmentImageFile = req.files['image'] ? req.files['image'][0] : null;
+  const selfieImageFile = req.files['selfieimage'] ? req.files['selfieimage'][0] : null;
+  if (!installmentImageFile || !selfieImageFile) {
+    return res.status(400).json({ error: 'Both ID image and selfie are required.' });
+  }
+   
+    // const params = {
+    //   Bucket: BucketName,
+    //   Key: req.file.originalname,
+    //   Body: req.file.buffer,
+    //   ContentType: req.file.mimetype,
+    // };
 
-    const params = {
-      Bucket: BucketName,
-      Key: req.file.originalname,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype,
-    };
-
-    const imageUrl = `https://${params.Bucket}.s3.amazonaws.com/${params.Key}`;
+    // const imageUrl = `https://${params.Bucket}.s3.amazonaws.com/${params.Key}`;
 
     const startDate = new Date();
   startDate.setDate(startDate.getDate() + 30); // Add 32 days to the current date
@@ -989,13 +1031,13 @@ app.post('/api/saveLoanForm', upload.single('image'), async (req, res) => {
     const applicationNumber = generateApplicationNumber();
 
     const result = await pool.query(
-      'INSERT INTO loanusers (loan_amount, first_name, last_name, email, phone_number, gcash_account, address, created_at, application_number, image, status, selected_plan, selected_amount,  birthday) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, $8, $9, $10, $11, $12, $13) RETURNING id',
-      [loanAmount, firstName, lastName, email, phone, gcash, address, applicationNumber, imageUrl, 'pending', installmentPlan, installmentAmount, birthday]
+      'INSERT INTO loanusers (loan_amount, first_name, last_name, email, phone_number, gcash_account, address, created_at, application_number, image, status, selected_plan, selected_amount, birthday, selfieimage) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP, $8, $9, $10, $11, $12, $13, $14) RETURNING id',
+      [loanAmount, firstName, lastName, email, phone, gcash, address, applicationNumber, installmentImageFile, 'pending', installmentPlan, installmentAmount, birthday, selfieImageFile]
     );
 
     const userId = result.rows[0].id;
 
-    await sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, applicationNumber,phone, gcash, address, imageUrl, installmentPlan, installmentAmount, birthday, formattedStartDate, formattedEndDate);
+    await sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, applicationNumber,phone, gcash, address, installmentImageFile, installmentPlan, installmentAmount, birthday, formattedStartDate, formattedEndDate, selfieImageFile);
 
     res.status(200).json({ userId, applicationNumber });
   } catch (error) {
@@ -1004,12 +1046,13 @@ app.post('/api/saveLoanForm', upload.single('image'), async (req, res) => {
   }
 });
 
-async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, applicationNumber,phone, gcash, address, imageUrl, installmentPlan, installmentAmount, birthday, formattedStartDate, formattedEndDate) {
+async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, applicationNumber,phone, gcash, address, installmentImageFile, installmentPlan, installmentAmount, birthday, formattedStartDate, formattedEndDate, selfieImageFile) {
   const sendGridApiKey = process.env.SENDGRID_API_KEY;
   const sendGridEndpoint = 'https://api.sendgrid.com/v3/mail/send';
 
-  const imageBuffer = req.file.buffer;
-  const imageBase64 = imageBuffer.toString('base64');
+ 
+  const installmentImageBase64 = installmentImageFile ? installmentImageFile.buffer.toString('base64') : null;
+  const selfieImageBase64 = selfieImageFile ? selfieImageFile.buffer.toString('base64') : null;
 
   const sendGridData = {
     personalizations: [
@@ -1028,12 +1071,26 @@ async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, 
       },
     ],
     attachments: [
-      {
-        content: imageBase64,
-        filename: 'uploaded_image.jpg',
-        type: 'image/jpeg',
-        disposition: 'attachment',
-      },
+      ...(installmentImageBase64
+        ? [
+            {
+              content: installmentImageBase64,
+              filename: 'installment_image.jpg',
+              type: 'image/jpeg',
+              disposition: 'attachment',
+            },
+          ]
+        : []),
+      ...(selfieImageBase64
+        ? [
+            {
+              content: selfieImageBase64,
+              filename: 'selfie_image.jpg',
+              type: 'image/jpeg',
+              disposition: 'attachment',
+            },
+          ]
+        : []),
     ],
   };
 
