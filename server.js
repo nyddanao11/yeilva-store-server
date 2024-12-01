@@ -2334,7 +2334,7 @@ app.post('/gcashsettlement', async (req, res) => {
             <li><strong>Deadline:</strong> ${deadline}</li>
           </ul>
           <p style="text-align: center; margin: 20px 0;">
-            <a href="https://yeilvastore.com/gcashtorecieved/${transactionCode}" 
+            <a href="https://yeilvastore.com/gcashtorecieved/" 
                style="
                  display: inline-block;
                  padding: 10px 20px;
@@ -2440,7 +2440,6 @@ app.post('/receivedgcash', async (req, res) => {
     res.status(500).json({ error: 'An error occurred while processing the transaction.' });
   }
 });
-
 
 
 
