@@ -2443,6 +2443,8 @@ app.post('/receivedgcash', async (req, res) => {
 
 
 
+
+app.post('/api/booking', async (req, res) => {
   const {
     fullName,
     email,
