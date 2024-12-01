@@ -2303,50 +2303,57 @@ app.post('/api/save-transaction-code', async (req, res) => {
   }
 });
 
-// Modify the endpoint to use multer for file handling
-app.post('/gcashsettlement', upload.single('image'), async (req, res) => {
-  const { firstname, lastname, email, amount, transactionCode, purpose } = req.body;
-  const imageFile = req.file;
-console.log('Uploaded file:', imageFile);
+
+
+app.post('/gcashsettlement', async (req, res) => {
+  const { firstname, lastname, email, amount, transactionCode, purpose, deadline } = req.body;
+
   try {
-    // Insert form data into the gcash_settlements table
+    // Insert form data into the database
     const result = await pool.query(
-      `INSERT INTO gcash_settlements (firstname, lastname, email, amount, transaction_code, purpose, image_path) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [firstname, lastname, email, parseFloat(amount), transactionCode, purpose, imageFile.path]
+      `INSERT INTO gcash_settlements(firstname, lastname, email, amount, transaction_code, purpose, deadline, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [firstname, lastname, email, parseFloat(amount), transactionCode, purpose, deadline, new Date()]
     );
 
     const transaction = result.rows[0];
 
-     const imageBuffer = req.file.buffer;
-      const imageBase64 = imageBuffer.toString('base64');
-
-       // Set up the email content and attach the QR code image
+    // Prepare the email content
     const emailContent = {
       to: email,
-      from: 'yeilvastore@gmail.com', // Replace with your verified SendGrid sender
+      from: 'yeilvastore@gmail.com', // Your verified sender email
       subject: 'Your GCash Settlement Details',
       html: `
-        <p>Dear ${firstname} ${lastname},</p>
-        <p>Thank you for using our GCash settlement service. Please find the details below to settle your amount:</p>
-        <ul>
-          <li><strong>Amount:</strong> PHP ${amount}</li>
-          <li><strong>Transaction Code:</strong> ${transactionCode}</li>
-        </ul>
-        <p>Attached is the QR code for payment.</p>
-        <p>Alternatively, you can pay through GCash account <strong>09497042268</strong>.</p>
-        <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Visit Yeilva Store</a></p>
-        <p>Best regards,</p>
-        <p>Yeilva Store Team</p>
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+          <p>Dear ${firstname} ${lastname},</p>
+          <p>Thank you for using our GCash settlement service. Please find the details below to settle your amount:</p>
+          <ul>
+            <li><strong>Amount:</strong> PHP ${amount}</li>
+            <li><strong>Transaction Code:</strong> ${transactionCode}</li>
+            <li><strong>Purpose:</strong> ${purpose}</li>
+            <li><strong>Deadline:</strong> ${deadline}</li>
+          </ul>
+          <p style="text-align: center; margin: 20px 0;">
+            <a href="https://yeilvastore.com/gcashtorecieved/${transactionCode}" 
+               style="
+                 display: inline-block;
+                 padding: 10px 20px;
+                 font-size: 16px;
+                 color: #fff;
+                 background-color: #007bff;
+                 text-decoration: none;
+                 border-radius: 5px;
+               " 
+               target="_blank" 
+               rel="noopener noreferrer">
+              PAY NOW
+            </a>
+          </p>
+          <p>If you have any questions, feel free to <a href="https://yeilvastore.com/contact" target="_blank">contact us</a>.</p>
+          <p>Best regards,</p>
+          <p><strong>Yeilva Store Team</strong></p>
+        </div>
       `,
-      attachments: [
-        {
-          content: imageBase64, // Encode image to base64
-          filename: 'GCash_QR_Code.jpg',
-          type: 'image/jpg',
-          disposition: 'attachment',
-        },
-      ],
     };
 
     // Send the email
@@ -2364,7 +2371,78 @@ console.log('Uploaded file:', imageFile);
 });
 
 
-app.post('/api/booking', async (req, res) => {
+app.get('/gcash_received', async (req, res) => {
+  console.log('Received Query Params:', req.query); // Log all query parameters
+
+  const { email } = req.query;
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' });
+  }
+
+  try {
+    // Query to fetch the most recent record for the email, including the status column
+    const query = `
+      SELECT amount, deadline, purpose, transaction_code, email, status
+      FROM gcash_settlements
+      WHERE email = $1
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    const result = await pool.query(query, [email]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No settlements found for this email' });
+    }
+
+    const latestEntry = result.rows[0];
+
+    // Check if the status is false
+    if (latestEntry.status) {
+      return res.status(403).json({ 
+        error: 'The latest settlement for this email has been marked as completed.' 
+      });
+    }
+
+    return res.status(200).json(latestEntry);
+  } catch (error) {
+    console.error('Error processing transaction:', error);
+    return res.status(500).json({ error: 'An error occurred while processing the transaction.' });
+  }
+});
+
+
+app.post('/receivedgcash', async (req, res) => {
+  const { firstname, lastname, email, amount, transactionCode, purpose, deadline } = req.body;
+
+  try {
+    // Insert form data into the gcash_setrecieved table
+    const result = await pool.query(
+      `INSERT INTO gcash_setrecieved (firstname, lastname, email, amount, transaction_code, purpose, deadline, created_at) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [firstname, lastname, email, parseFloat(amount), transactionCode, purpose, deadline, new Date()]
+    );
+
+    // Update the status column in the gcash_settlements table
+    await pool.query(
+      `UPDATE gcash_settlements 
+       SET status = $1 
+       WHERE email = $2 AND transaction_code = $3`,
+      [true, email, transactionCode]
+    );
+
+    res.status(201).json({ 
+      message: 'Transaction recorded successfully, and status updated', 
+      data: result.rows[0] 
+    });
+
+  } catch (error) {
+    console.error('Error processing transaction:', error);
+    res.status(500).json({ error: 'An error occurred while processing the transaction.' });
+  }
+});
+
+
+
   const {
     fullName,
     email,
