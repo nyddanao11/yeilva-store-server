@@ -81,6 +81,7 @@ const app = express();
 const router = express.Router();
 app.use(express.json());
 
+
 // Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -370,6 +371,10 @@ app.post('/checkout', async (req, res) => {
     await db.transaction(async (trx) => {
       // Generate the order number
       const orderNumber = generateOrderNumber();
+          const estimatedDate = new Date();
+     estimatedDate.setDate(estimatedDate.getDate() + 8); // Add 9 days to the current date
+  
+  const formattedDeliveryDate = estimatedDate.toDateString(); // Convert to a readable date format
 
       // Insert data into the 'checkout' table, including the order number and new fields
       const insertedOrder = await trx('checkout')
@@ -387,6 +392,7 @@ app.post('/checkout', async (req, res) => {
           order_number: orderNumber,
           payment_option: paymentOption,
           productname: productNames,
+          deliverydate: formattedDeliveryDate,
         })
         .returning('*');
 
@@ -555,6 +561,32 @@ app.get('/api/checkoutdata', async (req, res) => {
   }
 });
 
+
+app.get('/api/orderdata', async (req, res) => {
+  try {
+    const userEmail = req.query.email;
+    console.log('Received request for user email:', userEmail); // Add this line for debugging
+
+   const query = 'SELECT order_number, orderstatus, deliverydate FROM checkout WHERE email = $1 ORDER BY checkout_date DESC LIMIT 1';
+
+    const result = await pool.query(query, [userEmail]);
+    console.log('orderdata',result);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+
+    const user = result.rows[0];
+    console.log('User data sent to client:', user);
+    return res.json(user);
+
+   
+  } catch (error) {
+    console.error('Error executing SQL query:', error); // Log the SQL query error
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 
 app.post('/installmentusers', uploadMultiple, async (req, res) => {
