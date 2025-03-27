@@ -588,6 +588,24 @@ app.get('/api/orderdata', async (req, res) => {
   }
 });
 
+// Update order status and delivery date
+app.put('/api/updateOrder', async (req, res) => {
+    const { orderId, orderstatus, deliverydate } = req.body; // Destructure values from the request body
+    console.log('updateorder', req.body);
+
+    try {
+        const result = await pool.query(
+            'UPDATE checkout SET orderstatus = $1, deliverydate = $2 WHERE order_number = $3', // Correct column name in WHERE clause
+            [orderstatus, deliverydate, orderId] // Pass orderId directly as the parameter
+        );
+
+        res.status(200).json({ message: 'Order updated successfully' });
+    } catch (error) {
+        console.error('Error updating order:', error);
+        res.status(500).json({ message: 'Error updating order' });
+    }
+});
+
 
 app.post('/installmentusers', uploadMultiple, async (req, res) => {
   const {
