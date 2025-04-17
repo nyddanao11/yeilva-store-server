@@ -561,7 +561,6 @@ app.get('/api/checkoutdata', async (req, res) => {
   }
 });
 
-
 app.get('/api/orderdata', async (req, res) => {
   try {
     const userEmail = req.query.email;
@@ -605,6 +604,131 @@ app.put('/api/updateOrder', async (req, res) => {
         res.status(500).json({ message: 'Error updating order' });
     }
 });
+
+app.post('/add-product', async (req, res) => {
+  const product = req.body;
+  console.log('products', product);
+
+  const query = `
+    INSERT INTO products (id, name, category, price, weight, url, stock, page, thumbnails, description, place, sizecolor, product_details, shipping)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+  `;
+
+  const values = [
+  product.id,
+  product.name,
+  product.category,
+  product.price ,
+  product.weight,
+  product.url,
+  product.stock,
+  product.page ,
+  product.thumbnails,
+  product.description,
+  product.place,
+  product.sizecolor,
+  product.productdetails,
+  product.shipping,
+];
+
+  try {
+    // Execute the query and send success response
+    await pool.query(query, values);
+    res.status(200).json({ message: 'Product added successfully!' });
+  } catch (err) {
+    console.error('Error adding product:', err);
+
+    // Send an error response
+    res.status(500).json({ message: 'Failed to add product. Please try again.', error: err.message });
+  }
+});
+
+app.get('/api/productsdata', async (req, res) => {
+  try {
+    const productCategory = req.query.category;
+console.log('productCategory', productCategory);
+    const query = `
+      SELECT id, name, category, price, weight, url, stock, page, thumbnails, 
+             description, place, sizecolor, product_details, shipping 
+      FROM products WHERE category = $1
+    `;
+
+    const result = await pool.query(query, [productCategory]);
+    console.log('Products data fetched:', result.rows);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'No products found for the specified category' });
+    }
+
+    // Format data
+    const formattedData = result.rows.map((product) => ({
+      ...product,
+
+      thumbnails: product.thumbnails?.[0]?.split(/\s+/).map((thumbnail) =>
+        thumbnail.replace(/"/g,'')
+      ) || [],
+    }));
+
+    console.log('Formatted Products Data:', formattedData);
+
+    return res.json(formattedData);
+  } catch (error) {
+    console.error('Error executing SQL query:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+// Endpoint to fetch products based on category
+app.get('/api/productscategory', async (req, res) => {
+  const { category } = req.query; // Get the 'category' from query parameters
+
+  try {
+    // Query the products table in the database
+    const query = category
+      ? 'SELECT * FROM products WHERE category = $1' // Use a parameterized query
+      : 'SELECT * FROM products'; // Get all products if no category is provided
+
+    const params = category ? [category] : []; // Include the category parameter if provided
+
+    const result = await pool.query(query, params); // Execute the query
+    res.status(200).json(result.rows); // Send the rows as JSON to the client
+  } catch (error) {
+    console.error('Error fetching products:', error);
+    res.status(500).json({ error: 'Failed to fetch products' });
+  }
+});
+
+app.get('/api/productsearch', async (req, res) => {
+  const { name } = req.query;
+  let query = null;
+  let params = null;
+
+  try {
+    query = name
+      ? `SELECT * FROM products WHERE name ILIKE '%' || $1 || '%' LIMIT $2 OFFSET $3;`
+      : 'SELECT * FROM products LIMIT $2 OFFSET $3;';
+    const limit = 10;
+    const offset = 0;
+    params = name ? [name, limit, offset] : [limit, offset];
+
+    const result = await pool.query(query, params);
+
+    // Format data
+    const formattedData = result.rows.map((product) => ({
+      ...product,
+      thumbnails: product.thumbnails?.[0]?.split(/\s+/).map((thumbnail) =>
+        thumbnail.replace(/"/g, '')
+      ) || [],
+    }));
+
+    res.status(200).json(formattedData); // Send formattedData
+  } catch (error) {
+    console.error('Error fetching products:', error.message, { query, params });
+    res.status(500).json({ error: 'An unexpected error occurred. Please try again later.' });
+  }
+});
+
 
 
 app.post('/installmentusers', uploadMultiple, async (req, res) => {
