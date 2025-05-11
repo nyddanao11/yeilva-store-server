@@ -363,15 +363,17 @@ app.post('/checkout', async (req, res) => {
     total,
     paymentOption, 
     productNames,
+    productPrice,
+    productUrl,
   } = req.body;
-
+// console.log('CheckoutData', req.body);
   try {
        const cleanTotal = cleanNumericValue(total); // Clean the total value
     // Start a database transaction
     await db.transaction(async (trx) => {
       // Generate the order number
       const orderNumber = generateOrderNumber();
-          const estimatedDate = new Date();
+      const estimatedDate = new Date();
      estimatedDate.setDate(estimatedDate.getDate() + 8); // Add 9 days to the current date
   
   const formattedDeliveryDate = estimatedDate.toDateString(); // Convert to a readable date format
@@ -388,11 +390,13 @@ app.post('/checkout', async (req, res) => {
           checkout_date: new Date(),
           name,
           quantity,
-        total: cleanTotal,  // Insert cleaned total
+          total: cleanTotal,  // Insert cleaned total
           order_number: orderNumber,
           payment_option: paymentOption,
           productname: productNames,
           deliverydate: formattedDeliveryDate,
+          price: productPrice,
+          url: productUrl,
         })
         .returning('*');
 
@@ -564,25 +568,19 @@ app.get('/api/checkoutdata', async (req, res) => {
 app.get('/api/orderdata', async (req, res) => {
   try {
     const userEmail = req.query.email;
-    console.log('Received request for user email:', userEmail); // Add this line for debugging
 
-   const query = 'SELECT order_number, orderstatus, deliverydate FROM checkout WHERE email = $1 ORDER BY checkout_date DESC LIMIT 1';
-
+    const query = 'SELECT order_number, orderstatus, deliverydate FROM checkout WHERE email = $1 AND orderstatus::INTEGER < 4 ORDER BY orderstatus::INTEGER DESC';
     const result = await pool.query(query, [userEmail]);
-    console.log('orderdata',result);
+
+    console.log('orderdata', result.rows);
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: 'No orders found' });
     }
 
-
-    const user = result.rows[0];
-    console.log('User data sent to client:', user);
-    return res.json(user);
-
-   
+    return res.json(result.rows); // Return array of orders
   } catch (error) {
-    console.error('Error executing SQL query:', error); // Log the SQL query error
+    console.error('Error executing SQL query:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -603,6 +601,32 @@ app.put('/api/updateOrder', async (req, res) => {
         console.error('Error updating order:', error);
         res.status(500).json({ message: 'Error updating order' });
     }
+});
+
+app.get('/api/userorderdata', async (req, res) => {
+  try {
+    const userEmail = req.query.email;
+    console.log('Received request for user email:', userEmail);
+
+    const query = `
+      SELECT productname, price, url
+      FROM checkout
+      WHERE email = $1 AND orderstatus::INTEGER < 4
+      ORDER BY orderstatus::INTEGER DESC
+    `;
+    const result = await pool.query(query, [userEmail]);
+
+    console.log('orderdata', result.rows); // Log all rows received
+
+    if (result.rows.length === 0) {
+      return res.status(200).json([]); // Return an empty array if no orders
+    }
+
+    return res.json(result.rows); // ✅ Return all rows instead of wrapping only one
+  } catch (error) {
+    console.error('Error executing SQL query:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 app.post('/add-product', async (req, res) => {
@@ -729,6 +753,68 @@ app.get('/api/productsearch', async (req, res) => {
   }
 });
 
+app.get('/api/featuredproducts', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM products WHERE featured = TRUE');
+  // Format data
+    const formattedData = result.rows.map((product) => ({
+      ...product,
+
+      thumbnails: product.thumbnails?.[0]?.split(/\s+/).map((thumbnail) =>
+        thumbnail.replace(/"/g,'')
+      ) || [],
+    }));
+
+    // console.log('Formatted Products Data:', formattedData);
+    res.status(200).json(formattedData); // Send formattedData
+    
+  } catch (error) {
+    console.error('Error fetching featured products:', error);
+    res.status(500).json({ error: 'Failed to fetch featured products' });
+  }
+});
+
+app.get('/api/bestsellingproducts', async (req, res) => {
+  try {
+    const resultBestSelling = await pool.query('SELECT * FROM products WHERE bestselling = TRUE');
+  // Format data
+    const formattedData = resultBestSelling.rows.map((product) => ({
+      ...product,
+
+      thumbnails: product.thumbnails?.[0]?.split(/\s+/).map((thumbnail) =>
+        thumbnail.replace(/"/g,'')
+      ) || [],
+    }));
+
+    console.log('Formatted Products Data:', formattedData);
+    res.status(200).json(formattedData); // Send formattedData
+    
+  } catch (error) {
+    console.error('Error fetching bestselling products:', error);
+    res.status(500).json({ error: 'Failed to fetch bestselling products' });
+  }
+});
+
+app.get('/api/recommendedproducts', async (req, res) => {
+  try {
+    const resultRecommended = await pool.query('SELECT * FROM products WHERE recommended = TRUE');
+  // Format data
+    const formattedData = resultRecommended.rows.map((product) => ({
+      ...product,
+
+      thumbnails: product.thumbnails?.[0]?.split(/\s+/).map((thumbnail) =>
+        thumbnail.replace(/"/g,'')
+      ) || [],
+    }));
+
+    console.log('Formatted Products Data:', formattedData);
+    res.status(200).json(formattedData); // Send formattedData
+    
+  } catch (error) {
+    console.error('Error fetching recommended products:', error);
+    res.status(500).json({ error: 'Failed to fetch recommended products' });
+  }
+});
 
 
 app.post('/installmentusers', uploadMultiple, async (req, res) => {
