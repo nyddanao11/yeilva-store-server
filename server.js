@@ -603,6 +603,26 @@ app.put('/api/updateOrder', async (req, res) => {
     }
 });
 
+app.put('/api/updateProductDetails', async (req, res) => {
+    const { featured, bestselling, recommended, discount, id} = req.body; // Destructure values from the request body
+    console.log('updateDiscount', req.body);
+
+    if (!id) {
+        return res.status(400).json({ message: "Product ID is required." });
+    }
+
+    try {
+        const result = await pool.query(
+            'UPDATE products SET featured = $1, bestselling = $2, recommended = $3, discount = $4 WHERE id = $5',
+            [featured, bestselling, recommended, discount, id]
+        );
+        res.status(200).json({ message: 'Product details updated successfully' });
+    } catch (error) {
+        console.error('Database update error:', error);
+        res.status(500).json({ message: 'Error updating product details', error: error.message });
+    }
+});
+
 app.get('/api/userorderdata', async (req, res) => {
   try {
     const userEmail = req.query.email;
