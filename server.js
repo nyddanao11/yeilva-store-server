@@ -694,7 +694,7 @@ app.get('/api/productsdata', async (req, res) => {
 console.log('productCategory', productCategory);
     const query = `
       SELECT id, name, category, price, weight, url, stock, page, thumbnails, 
-             description, place, sizecolor, product_details, shipping 
+             description, place, sizecolor, product_details, shipping, discount
       FROM products WHERE category = $1
     `;
 
@@ -722,6 +722,7 @@ console.log('productCategory', productCategory);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
+
 
 
 // Endpoint to fetch products based on category
