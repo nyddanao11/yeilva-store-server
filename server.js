@@ -603,8 +603,9 @@ app.put('/api/updateOrder', async (req, res) => {
     }
 });
 
+
 app.put('/api/updateProductDetails', async (req, res) => {
-    const { featured, bestselling, recommended, discount, id} = req.body; // Destructure values from the request body
+    const { featured, bestselling, recommended, discount, stock, id} = req.body; // Destructure values from the request body
     console.log('updateDiscount', req.body);
 
     if (!id) {
@@ -613,8 +614,8 @@ app.put('/api/updateProductDetails', async (req, res) => {
 
     try {
         const result = await pool.query(
-            'UPDATE products SET featured = $1, bestselling = $2, recommended = $3, discount = $4 WHERE id = $5',
-            [featured, bestselling, recommended, discount, id]
+            'UPDATE products SET featured = $1, bestselling = $2, recommended = $3, discount = $4, stock =$5 WHERE id = $6',
+            [featured, bestselling, recommended, discount, stock, id]
         );
         res.status(200).json({ message: 'Product details updated successfully' });
     } catch (error) {
