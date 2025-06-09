@@ -796,6 +796,27 @@ app.get('/api/alldealsproduct', async (req, res) => {
   }
 });
 
+app.get('/api/youmaylikeproducts', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM products WHERE youmaylike = TRUE ');
+  // Format data
+    const formattedData = result.rows.map((product) => ({
+      ...product,
+
+      thumbnails: product.thumbnails?.[0]?.split(/\s+/).map((thumbnail) =>
+        thumbnail.replace(/"/g,'')
+      ) || [],
+    }));
+
+    console.log('Formatted Youmaylike Data:', formattedData);
+    res.status(200).json(formattedData); // Send formattedData
+    
+  } catch (error) {
+    console.error('Error fetching youmaylike products:', error);
+    res.status(500).json({ error: 'Failed to fetch youmaylike products' });
+  }
+});
+
 app.get('/api/featuredproducts', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM products WHERE featured = TRUE');
