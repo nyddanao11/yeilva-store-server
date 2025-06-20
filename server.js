@@ -365,6 +365,7 @@ app.post('/checkout', async (req, res) => {
     productNames,
     productPrice,
     productUrl,
+    productWeight,
   } = req.body;
 // console.log('CheckoutData', req.body);
   try {
@@ -397,6 +398,7 @@ app.post('/checkout', async (req, res) => {
           deliverydate: formattedDeliveryDate,
           price: productPrice,
           url: productUrl,
+          weight: productWeight,
         })
         .returning('*');
 
@@ -628,17 +630,17 @@ app.put('/api/updateProductDetails', async (req, res) => {
 app.get('/api/userorderdata', async (req, res) => {
   try {
     const userEmail = req.query.email;
-    console.log('Received request for user email:', userEmail);
+    // console.log('Received request for user email:', userEmail);
 
     const query = `
-      SELECT productname, price, url
+      SELECT productname, price, url, order_number, checkout_date, weight
       FROM checkout
       WHERE email = $1 AND orderstatus::INTEGER < 4
       ORDER BY orderstatus::INTEGER DESC
     `;
     const result = await pool.query(query, [userEmail]);
 
-    console.log('orderdata', result.rows); // Log all rows received
+    // console.log('orderdata', result.rows); // Log all rows received
 
     if (result.rows.length === 0) {
       return res.status(200).json([]); // Return an empty array if no orders
@@ -1473,8 +1475,6 @@ app.get('/validateCoupon', (req, res) => {
   }
 });
 
-
-
 app.get('/api/checkout-history', async (req, res) => {
   try {
     const userEmail = req.query.email;
@@ -1483,13 +1483,13 @@ app.get('/api/checkout-history', async (req, res) => {
       return res.status(400).json({ error: 'Email parameter is missing' });
     }
 const result = await db
-  .select(' name', 'checkout_date', 'total', 'order_number')
+  .select('productname', 'price', 'url', 'order_number', 'checkout_date', 'total', 'weight')
   .from('checkout')
-  .where('email', userEmail.replace(/"/g, ''));  // Remove extra quotes here
+  .where('email', userEmail);  
 
 
 const query = db
-  .select('name', 'checkout_date', 'total', 'order_number')
+   .select('productname', 'price', 'url', 'order_number', 'checkout_date', 'weight')
   .from('checkout')
   .where('email', userEmail)
   .toQuery();
@@ -1503,8 +1503,6 @@ res.json(result);
     res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
-
-
 
 
 app.get('/api/loanform-history', async (req, res) => {
