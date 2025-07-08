@@ -694,7 +694,7 @@ app.post('/add-product', async (req, res) => {
 app.get('/api/productsdata', async (req, res) => {
   try {
     const productCategory = req.query.category;
-console.log('productCategory', productCategory);
+// console.log('productCategory', productCategory);
     const query = `
       SELECT id, name, category, price, weight, url, stock, page, thumbnails, 
              description, place, sizecolor, product_details, shipping, discount
@@ -1018,7 +1018,7 @@ app.post('/installmentusers', uploadMultiple, async (req, res) => {
               <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at yeilvastore@gmail.com or 09497042268. We're here to help!</p>
               <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
               <p>Best regards,</p>
-              <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+              <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
             </div>
           </body>
         </html>
