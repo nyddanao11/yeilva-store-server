@@ -355,9 +355,14 @@ app.post('/checkout', async (req, res) => {
     firstname,
     lastname, 
     email,
-    address,
-    province,
-    phone,
+     // Destructure using frontend names and assign to backend names
+        streetAddress: address,     // Frontend's 'streetAddress' becomes backend's 'address'
+        stateProvince: province,    // Frontend's 'stateProvince' becomes backend's 'province'
+        phoneNumber: phone,         // Frontend's 'phoneNumber' becomes backend's 'phone'
+        city,                       // Add city if you want to store it
+        postalCode,                 // Add postalCode if you want to store it
+        fullName,                   // Add fullName if you want to store it
+        apartmentSuite,             // Add apartmentSuite if you want to store it
     name,
     quantity,
     total,
@@ -367,7 +372,7 @@ app.post('/checkout', async (req, res) => {
     productUrl,
     productWeight,
   } = req.body;
-// console.log('CheckoutData', req.body);
+console.log('CheckoutData', req.body);
   try {
        const cleanTotal = cleanNumericValue(total); // Clean the total value
     // Start a database transaction
@@ -385,9 +390,9 @@ app.post('/checkout', async (req, res) => {
           firstname, 
           lastname, 
           email,
-          address,
-          province,
-          phone,
+          address,    // Now correctly mapped from streetAddress
+          province,   // Now correctly mapped from stateProvince
+          phone,      // Now correctly mapped from phoneNumber
           checkout_date: new Date(),
           name,
           quantity,
@@ -432,8 +437,12 @@ app.post('/checkout', async (req, res) => {
           <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
 
           <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+           <p><strong>Full name:</strong> ${fullName}</p>
             <p><strong>Address:</strong> ${address}</p>
+           <p><strong>City:</strong> ${city}</p>
             <p><strong>Province:</strong> ${province}</p>
+           <p><strong>Postal Code:</strong> ${postalCode}</p>
+          <p><strong>Apartment:</strong> ${apartmentSuite}</p>
             <p><strong>Phone:</strong> ${phone}</p>
           </div>
 
@@ -442,7 +451,7 @@ app.post('/checkout', async (req, res) => {
           <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
 
           <p>Best regards,</p>
-         <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+         <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
         </div>
       </body>
     </html>
@@ -477,8 +486,12 @@ const checkoutInfoEmailToAdmin = {
           <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
 
           <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+               <p><strong>Full name:</strong> ${fullName}</p>
             <p><strong>Address:</strong> ${address}</p>
+           <p><strong>City:</strong> ${city}</p>
             <p><strong>Province:</strong> ${province}</p>
+           <p><strong>Postal Code:</strong> ${postalCode}</p>
+          <p><strong>Apartment:</strong> ${apartmentSuite}</p>
             <p><strong>Phone:</strong> ${phone}</p>
           </div>
 
@@ -487,7 +500,7 @@ const checkoutInfoEmailToAdmin = {
           <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
 
           <p>Best regards,</p>
-         <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+         <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
         </div>
       </body>
     </html>
@@ -506,7 +519,6 @@ const checkoutInfoEmailToAdmin = {
   // Handle email sending errors
 }
 
-   
       console.log('Checkout information emails sent successfully');
     }); // Close the try block here
   } catch (error) {
@@ -514,7 +526,6 @@ const checkoutInfoEmailToAdmin = {
     res.status(500).json('An error occurred during checkout');
   }
 });
-
 
 // Generate an order number
 function generateOrderNumber() {
@@ -541,31 +552,6 @@ app.post('/create-order', async (req, res) => {
   }
 });
 
-
-app.get('/api/checkoutdata', async (req, res) => {
-  try {
-    const userEmail = req.query.email;
-    console.log('Received request for user email:', userEmail); // Add this line for debugging
-
-   const query = 'SELECT address, province, phone FROM checkout WHERE email = $1';
-
-    const result = await pool.query(query, [userEmail]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-
-    const user = result.rows[0];
-    console.log('User data sent to client:', user);
-    return res.json(user);
-
-   
-  } catch (error) {
-    console.error('Error executing SQL query:', error); // Log the SQL query error
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 app.get('/api/orderdata', async (req, res) => {
   try {
@@ -886,21 +872,27 @@ app.get('/api/recommendedproducts', async (req, res) => {
 
 app.post('/installmentusers', uploadMultiple, async (req, res) => {
   const {
-    firstname,
-    lastname,
-    email,
-    address,
-    province,
-    phone,
-    name,
-    quantity,
-    total,
-    paymentOption,
-    installmentPlan,
-    installmentAmount,
-  } = req.body;
+ firstname,
+ lastname,
+ email,
+ // These should match the keys appended to FormData in the frontend
+ address,      // Expecting req.body.address directly
+ province,     // Expecting req.body.province directly
+ phone,        // Expecting req.body.phone directly
+ city,
+ postalCode,
+fullName,
+ apartmentSuite, // This might need handling if frontend sends empty string
+name,
+quantity,
+ total,
+paymentOption,
+installmentPlan,
+installmentAmount,
+ } = req.body;
 
-  // Validation: Check if address is provided
+  // Validation: Check if address is providednpm start
+
   if (!address) {
     return res.status(400).json({ error: 'Address is required.' });
   }
@@ -968,16 +960,16 @@ app.post('/installmentusers', uploadMultiple, async (req, res) => {
         firstname,
         lastname,
         email,
-        address,
-        province,
-        phone,
+        address,     // Frontend's 'streetAddress' becomes backend's 'address'
+        province,    // Frontend's 'stateProvince' becomes backend's 'province'
+        phone,         // Frontend's 'phoneNumber' becomes backend's 'phone'
         new Date(),
         name,
         quantity,
         cleanedTotal,  // Use the cleanedTotal here
         orderNumber,
         paymentOption,
-     installmentImageFile,
+       installmentImageFile,
         installmentPlan,
         installmentAmount,
        selfieImageFile,
@@ -1011,9 +1003,13 @@ app.post('/installmentusers', uploadMultiple, async (req, res) => {
               </div>
               <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
               <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
-                <p><strong>Address:</strong> ${address}</p>
-                <p><strong>Province:</strong> ${province}</p>
-                <p><strong>Phone:</strong> ${phone}</p>
+                 <p><strong>Full name:</strong> ${fullName}</p>
+                  <p><strong>Address:</strong> ${address}</p>
+                 <p><strong>City:</strong> ${city}</p>
+                  <p><strong>Province:</strong> ${province}</p>
+                 <p><strong>Postal Code:</strong> ${postalCode}</p>
+                <p><strong>Apartment:</strong> ${apartmentSuite}</p>
+                  <p><strong>Phone:</strong> ${phone}</p>
               </div>
               <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at yeilvastore@gmail.com or 09497042268. We're here to help!</p>
               <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
@@ -1058,7 +1054,14 @@ app.post('/installmentusers', uploadMultiple, async (req, res) => {
               <p>Installment Plan: ${installmentPlan}</p>
               <p>Installment Payment monthly: ₱${installmentAmount}</p>
               <p>First Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
-              <p>Shipping Address: ${address}, ${province}, Phone: ${phone}</p>
+              <h5>Shipping Address</h5>
+               <p><strong>Full name:</strong> ${fullName}</p>
+                <p><strong>Address:</strong> ${address}</p>
+               <p><strong>City:</strong> ${city}</p>
+                <p><strong>Province:</strong> ${province}</p>
+               <p><strong>Postal Code:</strong> ${postalCode}</p>
+              <p><strong>Apartment:</strong> ${apartmentSuite}</p>
+                <p><strong>Phone:</strong> ${phone}</p>
             </body>
           </html>`,
       },
@@ -1117,6 +1120,7 @@ app.post('/installmentusers', uploadMultiple, async (req, res) => {
 });
 
 
+
 // Generate an order number
 function generateOrderNumber() {
   const timestamp = new Date().getTime(); // Current timestamp
@@ -1145,29 +1149,64 @@ app.post('/create-order', async (req, res) => {
 
 
 app.get('/api/user', async (req, res) => {
-  try {
-    const userEmail = req.query.email;
-    console.log('Received request for user email:', userEmail); // Add this line for debugging
+    try {
+        const userEmail = req.query.email;
+        console.log('Received request for user email:', userEmail);
 
-   const query = 'SELECT firstname, lastname, email, TO_CHAR(timestamp, \'YYYY-MM-DD\') AS joineddate FROM users WHERE email = $1';
+        // SQL query to fetch user details and all associated delivery addresses
+        // It uses LEFT JOIN to include users even if they have no addresses.
+        // json_agg collects all related addresses into a JSON array.
+        // json_build_object formats each address into a clean object.
+        // COALESCE handles cases where a user has no addresses, returning an empty array instead of null.
+        const query = `
+            SELECT
+                u.firstname,
+                u.lastname,
+                u.email,
+                TO_CHAR(u.timestamp, 'YYYY-MM-DD') AS joineddate,
+                COALESCE(
+                    json_agg(
+                        json_build_object(
+                            'id', uda.user_id,
+                            'fullName', uda.full_name,
+                            'streetAddress', uda.street_address,
+                            'apartmentSuite', uda.apartment_suite,
+                            'city', uda.city,
+                            'stateProvince', uda.state_province,
+                            'postalCode', uda.postal_code,
+                            'phoneNumber', uda.phone_number,
+                            'isDefault', uda.is_default
+                        )
+                        ORDER BY uda.is_default DESC, uda.created_at DESC -- Optional: Order addresses
+                    ) FILTER (WHERE uda.id IS NOT NULL), -- Only aggregate if there's an actual address
+                    '[]'::json -- Return an empty JSON array if no addresses
+                ) AS delivery_addresses
+            FROM
+                users u
+            LEFT JOIN
+                user_delivery_addresses uda ON u.user_id = uda.user_id
+            WHERE
+                u.email = $1
+            GROUP BY
+                u.user_id -- Group by the primary key of the users table
+        `;
 
-    const result = await pool.query(query, [userEmail]);
+        const result = await pool.query(query, [userEmail]);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const user = result.rows[0];
+        console.log('User data with addresses sent to client:', user);
+        return res.json(user);
+
+    } catch (error) {
+        console.error('Error executing SQL query:', error);
+        return res.status(500).json({ error: 'Internal server error' });
     }
-
-
-    const user = result.rows[0];
-    console.log('User data sent to client:', user);
-    return res.json(user);
-
-   
-  } catch (error) {
-    console.error('Error executing SQL query:', error); // Log the SQL query error
-    return res.status(500).json({ error: 'Internal server error' });
-  }
 });
+
 
 
 
@@ -1586,6 +1625,60 @@ app.post('/api/updateStatus', async (req, res) => {
   }
 });
 
+
+app.post('/api/adddeliveryaddress', async (req, res) => {
+    const {
+        fullName,
+        userEmail,
+        streetAddress,
+        apartmentSuite,
+        city,
+        stateProvince,
+        postalCode,
+        phoneNumber,
+    } = req.body;
+    console.log('userEmail', userEmail);
+
+    if (!userEmail) {
+        return res.status(400).json({ success: false, message: 'User email is required.' });
+    }
+
+    let userId;
+    try {
+        // First, get the user_id from the users table using their email
+        const userResult = await pool.query('SELECT user_id FROM users WHERE email = $1', [userEmail]);
+        if (userResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'User not found.' });
+        }
+        userId = userResult.rows[0].user_id;
+    } catch (error) {
+        console.error('Error fetching user ID:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error.' });
+    }
+
+    try {
+        await pool.query(
+            `INSERT INTO user_delivery_addresses (
+                user_id, full_name, street_address, apartment_suite, city, state_province, postal_code, phone_number
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [
+                userId,
+                fullName,
+                streetAddress,
+                apartmentSuite,
+                city,
+                stateProvince,
+                postalCode,
+                phoneNumber
+            ]
+        );
+
+        res.json({ success: true, message: 'Address added successfully' });
+    } catch (error) {
+        console.error('Error adding new delivery address:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
 
 app.get('/api/installment-history', async (req, res) => {
   try {
