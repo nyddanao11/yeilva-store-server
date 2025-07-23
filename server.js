@@ -1636,6 +1636,7 @@ app.post('/api/adddeliveryaddress', async (req, res) => {
         stateProvince,
         postalCode,
         phoneNumber,
+         isDefault,
     } = req.body;
     console.log('userEmail', userEmail);
 
@@ -1659,8 +1660,8 @@ app.post('/api/adddeliveryaddress', async (req, res) => {
     try {
         await pool.query(
             `INSERT INTO user_delivery_addresses (
-                user_id, full_name, street_address, apartment_suite, city, state_province, postal_code, phone_number
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+                user_id, full_name, street_address, apartment_suite, city, state_province, postal_code, phone_number, is_default
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
             [
                 userId,
                 fullName,
@@ -1669,7 +1670,8 @@ app.post('/api/adddeliveryaddress', async (req, res) => {
                 city,
                 stateProvince,
                 postalCode,
-                phoneNumber
+                phoneNumber,
+                 isDefault
             ]
         );
 
