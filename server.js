@@ -372,7 +372,7 @@ app.post('/checkout', async (req, res) => {
     productUrl,
     productWeight,
   } = req.body;
-console.log('CheckoutData', req.body);
+// console.log('CheckoutData', req.body);
   try {
        const cleanTotal = cleanNumericValue(total); // Clean the total value
     // Start a database transaction
@@ -560,7 +560,7 @@ app.get('/api/orderdata', async (req, res) => {
     const query = 'SELECT order_number, orderstatus, deliverydate FROM checkout WHERE email = $1 AND orderstatus::INTEGER < 4 ORDER BY orderstatus::INTEGER DESC';
     const result = await pool.query(query, [userEmail]);
 
-    console.log('orderdata', result.rows);
+    // console.log('orderdata', result.rows);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'No orders found' });
@@ -576,7 +576,7 @@ app.get('/api/orderdata', async (req, res) => {
 // Update order status and delivery date
 app.put('/api/updateOrder', async (req, res) => {
     const { orderId, orderstatus, deliverydate } = req.body; // Destructure values from the request body
-    console.log('updateorder', req.body);
+    // console.log('updateorder', req.body);
 
     try {
         const result = await pool.query(
@@ -594,7 +594,7 @@ app.put('/api/updateOrder', async (req, res) => {
 
 app.put('/api/updateProductDetails', async (req, res) => {
     const { featured, bestselling, recommended, youmaylike, discount, stock, id} = req.body; // Destructure values from the request body
-    console.log('updateDiscount', req.body);
+    // console.log('updateDiscount', req.body);
 
     if (!id) {
         return res.status(400).json({ message: "Product ID is required." });
@@ -641,7 +641,7 @@ app.get('/api/userorderdata', async (req, res) => {
 
 app.post('/add-product', async (req, res) => {
   const product = req.body;
-  console.log('products', product);
+  // console.log('products', product);
 
   const query = `
     INSERT INTO products (id, name, category, price, weight, url, stock, page, thumbnails, description, place, sizecolor, product_details, shipping)
@@ -688,7 +688,7 @@ app.get('/api/productsdata', async (req, res) => {
     `;
 
     const result = await pool.query(query, [productCategory]);
-    console.log('Products data fetched:', result.rows);
+    // console.log('Products data fetched:', result.rows);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'No products found for the specified category' });
@@ -703,7 +703,7 @@ app.get('/api/productsdata', async (req, res) => {
       ) || [],
     }));
 
-    console.log('Formatted Products Data:', formattedData);
+    // console.log('Formatted Products Data:', formattedData);
 
     return res.json(formattedData);
   } catch (error) {
@@ -776,7 +776,7 @@ app.get('/api/alldealsproduct', async (req, res) => {
       ) || [],
     }));
 
-    console.log('Formatted Products Data:', formattedData);
+    // console.log('Formatted Products Data:', formattedData);
     res.status(200).json(formattedData); // Send formattedData
     
   } catch (error) {
@@ -797,7 +797,7 @@ app.get('/api/youmaylikeproducts', async (req, res) => {
       ) || [],
     }));
 
-    console.log('Formatted Youmaylike Data:', formattedData);
+    // console.log('Formatted Youmaylike Data:', formattedData);
     res.status(200).json(formattedData); // Send formattedData
     
   } catch (error) {
@@ -839,7 +839,7 @@ app.get('/api/bestsellingproducts', async (req, res) => {
       ) || [],
     }));
 
-    console.log('Formatted Products Data:', formattedData);
+    // console.log('Formatted Products Data:', formattedData);
     res.status(200).json(formattedData); // Send formattedData
     
   } catch (error) {
@@ -860,7 +860,7 @@ app.get('/api/recommendedproducts', async (req, res) => {
       ) || [],
     }));
 
-    console.log('Formatted Products Data:', formattedData);
+    // console.log('Formatted Products Data:', formattedData);
     res.status(200).json(formattedData); // Send formattedData
     
   } catch (error) {
@@ -1151,7 +1151,7 @@ app.post('/create-order', async (req, res) => {
 app.get('/api/user', async (req, res) => {
     try {
         const userEmail = req.query.email;
-        console.log('Received request for user email:', userEmail);
+        // console.log('Received request for user email:', userEmail);
 
         // SQL query to fetch user details and all associated delivery addresses
         // It uses LEFT JOIN to include users even if they have no addresses.
@@ -1478,7 +1478,7 @@ async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, 
 app.get('/api/loandata', async (req, res) => {
   try {
     const userEmail = req.query.email;
-    console.log('Received request for user email:', userEmail); // Add this line for debugging
+    // console.log('Received request for user email:', userEmail); 
 
    const query = 'SELECT phone_number, gcash_account, address, image FROM loanusers WHERE email = $1';
 
@@ -1638,7 +1638,7 @@ app.post('/api/adddeliveryaddress', async (req, res) => {
         phoneNumber,
          isDefault,
     } = req.body;
-    console.log('userEmail', userEmail);
+    // console.log('userEmail', userEmail);
 
     if (!userEmail) {
         return res.status(400).json({ success: false, message: 'User email is required.' });
@@ -1954,7 +1954,7 @@ app.post('/api/reviews', async (req, res) => {
 
   try {
     // Here you can save the review data to your PostgreSQL database
-    console.log('Received review:', reviewData);
+    // console.log('Received review:', reviewData);
     await pool.query('INSERT INTO reviews (rating, comments, firstname, lastname, email, productname, submitted) VALUES ($1, $2, $3, $4, $5, $6, CURRENT_DATE)', 
                     [reviewData.rating, reviewData.comment, reviewData.userData.firstname, reviewData.userData.lastname, reviewData.userData.email, reviewData.productname]);
     // Send a response back to the client
@@ -1987,7 +1987,7 @@ app.get('/api/reviewstatus', async (req, res) => {
 
   const { userEmail, productName } = req.query;
   
-  console.log('Received parameters:', { userEmail, productName });
+  // console.log('Received parameters:', { userEmail, productName });
   
   if (!userEmail || !productName) {
     return res.status(400).json({ error: 'userEmail and productName are required' });
@@ -2790,7 +2790,7 @@ app.post('/gcashsettlement', async (req, res) => {
 
 
 app.get('/gcash_received', async (req, res) => {
-  console.log('Received Query Params:', req.query); // Log all query parameters
+  // console.log('Received Query Params:', req.query); 
 
   const { email } = req.query;
   if (!email) {
