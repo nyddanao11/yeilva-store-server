@@ -3025,8 +3025,8 @@ app.post('/create-checkout-session', async (req, res) => {
           send_email_receipt: true,
           show_description: true,
           show_line_items: true,
-          success_url: 'https://yeilvastore.com/success', // Redirect URL on success
-          cancel_url: 'https://yeilvastore.com/cancel',   // Redirect URL on cancel
+          success_url: 'https://yeilvastore.com/successpage', // Redirect URL on success
+          cancel_url: 'https://yeilvastore.com/cancelpage',   // Redirect URL on cancel
           description: 'Payment for your order',
           statement_descriptor: 'yeilvastore',
           payment_method_types: ['card', 'gcash', 'paymaya', 'dob'], 
