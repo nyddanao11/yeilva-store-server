@@ -2960,6 +2960,94 @@ app.post('/api/booking', async (req, res) => {
 });
 
 
+const PAYMONGO_API_URL = 'https://api.paymongo.com/v1/checkout_sessions';
+const PAYMONGO_SECRET_KEY = process.env.PAYMONGO_SECRET_KEY;
+const VALID_VOUCHER_CODE = 'SAVE10'; // A hardcoded example for demonstration
+const VOUCHER_DISCOUNT_PERCENTAGE = 10;
+const SHIPPING_FEE_PESOS = 150; 
+const FREE_SHIPPING_THRESHOLD = 2500;
+
+app.post('/create-checkout-session', async (req, res) => {
+  try {
+    const rawLineItems = req.body.data.attributes.line_items;
+    const voucherCode = req.body.data.attributes.voucher_code; // Get the voucher code from the client
+
+    let totalItemsPrice = rawLineItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+
+    // Calculate shipping fee
+    let shippingRate = 0;
+    if (totalItemsPrice < FREE_SHIPPING_THRESHOLD) {
+      // Your shipping calculation logic
+      const totalWeight = rawLineItems.reduce((total, item) => total + (item.weight || 0), 0);
+      const newMultiplier = totalWeight > 0 ? (0.145 + 30 / totalWeight) : 0;
+      shippingRate = Math.round(
+        rawLineItems.reduce((total, item) => total + (item.weight || 0) * newMultiplier, 0)
+      );
+    }
+    
+    // Validate the voucher code and apply the discount
+    let voucherDiscount = 0;
+    if (voucherCode === VALID_VOUCHER_CODE) { // Basic validation
+      voucherDiscount = totalItemsPrice * (VOUCHER_DISCOUNT_PERCENTAGE / 100);
+    }
+
+    // Prepare line items for PayMongo
+    const paymongoLineItems = rawLineItems.map(item => ({
+      name: item.name,
+      quantity: item.quantity,
+      amount: item.price * 100, // Price in centavos
+      currency: 'PHP',
+    }));
+
+    if (shippingRate > 0) {
+      paymongoLineItems.push({
+        name: 'Shipping Fee',
+        quantity: 1,
+        amount: shippingRate * 100,
+        currency: 'PHP',
+      });
+    }
+
+    if (voucherDiscount > 0) {
+      paymongoLineItems.push({
+        name: `Voucher Discount (${VOUCHER_DISCOUNT_PERCENTAGE}%)`,
+        quantity: 1,
+        amount: -voucherDiscount * 100, // Negative amount for discounts
+        currency: 'PHP',
+      });
+    }
+
+    // Send the final payload to PayMongo
+    const payload = {
+      data: {
+        attributes: {
+          line_items: paymongoLineItems,   
+          send_email_receipt: true,
+          show_description: true,
+          show_line_items: true,
+          success_url: 'https://yeilvastore.com/success', // Redirect URL on success
+          cancel_url: 'https://yeilvastore.com/cancel',   // Redirect URL on cancel
+          description: 'Payment for your order',
+          statement_descriptor: 'yeilvastore',
+          payment_method_types: ['card', 'gcash', 'paymaya', 'dob'], 
+        },
+      },
+    };
+    const response = await axios.post(PAYMONGO_API_URL, payload, {
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Basic ${Buffer.from(PAYMONGO_SECRET_KEY).toString('base64')}`,
+      },
+    });
+    res.json(response.data);
+  } catch (error) {
+    console.error('Error creating checkout session:', error.response ? error.response.data : error.message);
+    res.status(500).json({ error: 'An error occurred' });
+  }
+});
+
+
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
