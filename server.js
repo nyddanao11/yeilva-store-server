@@ -99,10 +99,16 @@ app.use(cookieParser());
 app.use('/api/check-auth', checkAuthRouter);
 
 
-const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-sgMail.setApiKey(SENDGRID_API_KEY);
+// const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+// sgMail.setApiKey(SENDGRID_API_KEY);
 
-
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  }
+});
 
 // Routes
 app.get('/', (req, res) => {
@@ -242,71 +248,154 @@ function generateToken() {
 
 app.post('/register', async (req, res) => {
   const { email, firstname, lastname, password } = req.body;
-  // console.log('Request body:', req.body);
 
- const salt = bcrypt.genSaltSync(10);
-const hash = bcrypt.hashSync(password, salt);
-
+  // Input validation
+  if (!email || !firstname || !lastname || !password) {
+    return res.status(400).json({ error: 'All fields are required.' });
+  }
 
   try {
-    // Check if the email already exists in the users table
-    const existingUser = await db('users').where('email', '=', email);
-
-    if (existingUser.length > 0) {
-      return res.status(400).json({ error: 'Email already registered' });
+    const existingUser = await db('users').where('email', '=', email).first();
+    if (existingUser) {
+      return res.status(409).json({ error: 'Email already registered.' });
     }
 
-    // Generate a confirmation token
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(password, salt);
+
     const token = generateToken();
 
-    // Store the token in the PostgreSQL database
     await db('users').insert({
-      firstname: firstname,
-      lastname: lastname,
-      email: email,
+      firstname,
+      lastname,
+      email,
       password: hash,
-      // Store the confirmation token and set verified to false
-      token: token,
+      token,
       verified: false,
-       status: 'active', // Set the initial status to 'active'
-       timestamp: new Date(),
+      status: 'active',
+      timestamp: new Date()
     });
 
-    // Craft the confirmation link
-    const verificationLink = `https://yeilvastore.com/confirm?token=${token}`;
+    // Send a successful response to the client immediately
+    res.status(201).json({ message: 'User registered successfully. A verification email has been sent.' });
 
-    // Craft the confirmation email
-    const msg = {
-      to: email,
-      from: 'yeilvastore@gmail.com',
-      subject: 'Email Verification',
-      html: `<html>
-      <body>
-      <div>
-      <p>Dear ${firstname} ${lastname},</p>
-      <p>Thank you for signing up! To verify your email address, please click the link below:</p> 
-      <a href="${verificationLink}">Verification Link</a>
-      <p>If you have any questions, feel free to reply to this email.</p>
+    // Send the email after the response to the client
+  const verificationLink = `https://yeilvastore.com/confirm?token=${token}`;
 
-      <p>Best regards,</p>
-      <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
-      </div>
-      </body>
-      </html>`,
-    };
+const mailOptions = {
+    from: '"YeilvaStore" <noreply@yeilvastore.com>',
+    to: email,
+    subject: 'Confirm Your Email Address',
+    html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>YeilvaStore Email Verification</title>
+            <style>
+                body {
+                    margin: 0;
+                    padding: 0;
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    color: #333333;
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 20px auto;
+                    background-color: #ffffff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    border-top: 4px solid #007bff;
+                }
+                .header {
+                    text-align: center;
+                    padding-bottom: 20px;
+                    border-bottom: 1px solid #eaeaee;
+                }
+                .header img {
+                    max-width: 150px;
+                    height: auto;
+                }
+                .content {
+                    padding: 20px 0;
+                    line-height: 1.6;
+                    text-align: center;
+                }
+                .content p {
+                    font-size: 16px;
+                    margin: 0 0 15px;
+                }
+                .button-container {
+                    text-align: center;
+                    padding: 20px 0;
+                }
+                .button {
+                    display: inline-block;
+                    padding: 12px 24px;
+                    font-size: 16px;
+                    color: #ffffff;
+                    background-color: #007bff;
+                    border-radius: 5px;
+                    text-decoration: none;
+                    font-weight: bold;
+                }
+                .footer {
+                    text-align: center;
+                    padding-top: 20px;
+                    border-top: 1px solid #eaeaee;
+                    font-size: 12px;
+                    color: #777777;
+                }
+                .footer a {
+                    color: #007bff;
+                    text-decoration: none;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">
+                        <img src="https://yeilvastore.com/logo.png" alt="YeilvaStore Logo">
+                    </a>
+                </div>
+                <div class="content">
+                    <p><strong>Hi ${firstname},</strong></p>
+                    <p>Thanks for signing up for an account with YeilvaStore!</p>
+                    <p>To complete your registration, please click the button below to verify your email address:</p>
+                    <div class="button-container">
+                        <a href="${verificationLink}" class="button">Verify Email Address</a>
+                    </div>
+                    <p>If the button doesn't work, you can also copy and paste the following link into your browser:</p>
+                    <p><a href="${verificationLink}" style="font-size: 12px; color: #007bff;">${verificationLink}</a></p>
+                </div>
+                <div class="footer">
+                    <p>If you have any questions, reply to this email.</p>
+                    <p>&copy; ${new Date().getFullYear()} YeilvaStore. All rights reserved.</p>
+                    <p>
+                        <a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Visit Our Website</a>
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `
+};
 
-    // Send the confirmation email
-    sgMail.send(msg, (error) => {
-      if (error) {
-        console.error('Error sending email:', error);
-        return res.status(500).json({ error: 'Failed to send email' });
-      }
-      console.log('Email sent successfully');
-      res.json({ message: 'Email sent successfully' });
-    });
-  } catch (err) {
-    console.error('Error during registration', err);
-    res.status(500).json('An error occurred during registration');
+    // Use a try-catch block for sending the email, but don't hold up the API response.
+    try {
+      const info = await transporter.sendMail(mailOptions);
+      console.log('Email sent:', info.response);
+    } catch (emailErr) {
+      console.error('Error sending verification email:', emailErr);
+    }
+
+  } catch (dbErr) {
+    console.error('Error during registration:', dbErr);
+    res.status(500).json({ error: 'An error occurred during registration.' });
   }
 });
 
@@ -414,7 +503,7 @@ app.post('/checkout', async (req, res) => {
         // Send an email with the checkout information to the customer
         const checkoutInfoEmailToCustomer = {
           to: email,
-          from: 'yeilvastore@gmail.com',
+         from: '"YeilvaStore" <noreply@yeilvastore.com>',
           subject: 'Checkout Information',
          html: `
     <html>
@@ -461,7 +550,7 @@ app.post('/checkout', async (req, res) => {
        
       // Send an email with the checkout information to the admin
 const checkoutInfoEmailToAdmin = {
-  to: 'ayeilvzarong@gmail.com',
+  to: 'bonz.ba50@gmail.com',
   from: 'yeilvastore@gmail.com',
   subject: 'New Checkout Information',
   html: `
@@ -508,11 +597,11 @@ const checkoutInfoEmailToAdmin = {
 };
 
 
-       try {
+        try {
   // Send checkout info email to customer
-  await sgMail.send(checkoutInfoEmailToCustomer);
+  await transporter.sendMail(checkoutInfoEmailToCustomer);
   // Send checkout info email to admin
-  await sgMail.send(checkoutInfoEmailToAdmin);
+  await transporter.sendMail(checkoutInfoEmailToAdmin);
   console.log('Checkout information emails sent successfully');
 } catch (error) {
   console.error('Error sending emails:', error);
@@ -1022,82 +1111,57 @@ installmentAmount,
     };
 
  const checkoutEmailToAdmin = async () => {
-  const sendGridApiKey = process.env.SENDGRID_API_KEY;
-  const sendGridEndpoint = 'https://api.sendgrid.com/v3/mail/send';
+  const installmentAttachment = installmentImageFile
+    ? {
+        filename: 'installment_image.jpg',
+        content: installmentImageFile.buffer,
+        contentType: 'image/jpeg'
+      }
+    : null;
 
+  const selfieAttachment = selfieImageFile
+    ? {
+        filename: 'selfie_image.jpg',
+        content: selfieImageFile.buffer,
+        contentType: 'image/jpeg'
+      }
+    : null;
 
-  const installmentImageBase64 = installmentImageFile ? installmentImageFile.buffer.toString('base64') : null;
-  const selfieImageBase64 = selfieImageFile ? selfieImageFile.buffer.toString('base64') : null;
-
-  const sendGridData = {
-    personalizations: [
-      {
-        to: [{ email: 'ayeilvzarong@gmail.com' }],
-        subject: 'New Checkout Information',
-      },
-    ],
-    from: { email: 'yeilvastore@gmail.com' },
-    content: [
-      {
-        type: 'text/html',
-        value: `
-          <html>
-            <body>
-              <h1>New Order Received</h1>
-              <p>Dear Admin,</p>
-              <p>A new order has been received. Details are as follows:</p>
-              <p>Username: ${firstname} ${lastname},</p>
-              <p>Email Address: ${email}</p>
-              <p>Product: ${name}</p>
-              <p>Total Amount: ${total}</p>
-              <p>Payment Method: ${paymentOption}</p>
-              <p>Installment Plan: ${installmentPlan}</p>
-              <p>Installment Payment monthly: ₱${installmentAmount}</p>
-              <p>First Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
-              <h5>Shipping Address</h5>
-               <p><strong>Full name:</strong> ${fullName}</p>
-                <p><strong>Address:</strong> ${address}</p>
-               <p><strong>City:</strong> ${city}</p>
-                <p><strong>Province:</strong> ${province}</p>
-               <p><strong>Postal Code:</strong> ${postalCode}</p>
-              <p><strong>Apartment:</strong> ${apartmentSuite}</p>
-                <p><strong>Phone:</strong> ${phone}</p>
-            </body>
-          </html>`,
-      },
-    ],
-    attachments: [
-      ...(installmentImageBase64
-        ? [
-            {
-              content: installmentImageBase64,
-              filename: 'installment_image.jpg',
-              type: 'image/jpeg',
-              disposition: 'attachment',
-            },
-          ]
-        : []),
-      ...(selfieImageBase64
-        ? [
-            {
-              content: selfieImageBase64,
-              filename: 'selfie_image.jpg',
-              type: 'image/jpeg',
-              disposition: 'attachment',
-            },
-          ]
-        : []),
-    ],
+  const mailOptions = {
+    from: '"YeilvaStore" <yeilvastore@gmail.com>',
+    to: 'bonz.ba50@gmail.com',
+    subject: 'New Checkout Information',
+    html: `
+      <html>
+        <body>
+          <h1>New Order Received</h1>
+          <p>Dear Admin,</p>
+          <p>A new order has been received. Details are as follows:</p>
+          <p>Username: ${firstname} ${lastname}</p>
+          <p>Email Address: ${email}</p>
+          <p>Product: ${name}</p>
+          <p>Total Amount: ${total}</p>
+          <p>Payment Method: ${paymentOption}</p>
+          <p>Installment Plan: ${installmentPlan}</p>
+          <p>Installment Payment monthly: ₱${installmentAmount}</p>
+          <p>First Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.</p>
+          <h5>Shipping Address</h5>
+          <p><strong>Full name:</strong> ${fullName}</p>
+          <p><strong>Address:</strong> ${address}</p>
+          <p><strong>City:</strong> ${city}</p>
+          <p><strong>Province:</strong> ${province}</p>
+          <p><strong>Postal Code:</strong> ${postalCode}</p>
+          <p><strong>Apartment:</strong> ${apartmentSuite}</p>
+          <p><strong>Phone:</strong> ${phone}</p>
+        </body>
+      </html>
+    `,
+    attachments: [installmentAttachment, selfieAttachment].filter(Boolean)
   };
 
   try {
-    await axios.post(sendGridEndpoint, sendGridData, {
-      headers: {
-        Authorization: `Bearer ${sendGridApiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    console.log('Admin email sent successfully');
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Admin email sent successfully:', info.response);
   } catch (error) {
     console.error('Error sending admin email:', error);
     res.status(500).json({ error: 'Failed to send admin email' });
@@ -1105,7 +1169,7 @@ installmentAmount,
 };
 
     // Send the emails
-    await sgMail.send(checkoutEmailToCustomer);
+    await transporter.sendMail(checkoutEmailToCustomer);
     await checkoutEmailToAdmin();  // Call the admin email function
 
     console.log('Checkout information emails sent successfully');
@@ -1266,18 +1330,17 @@ app.route('/api/send-otp')
   });
 
 
-
 // Function to send OTP email using SendGrid
 async function sendOTPEmail(email, otp) {
   const msg = {
     to: email,
-    from: 'yeilvastore@gmail.com', // Replace with your verified sender email on SendGrid
+    from: '"YeilvaStore" <yeilvastore@gmail.com>',
     subject: 'Password Reset OTP',
     text: `Your OTP is: ${otp}`,
   };
 
   try {
-    await sgMail.send(msg);
+    await transporter.sendMail(msg);
     console.log('Email sent successfully');
   } catch (error) {
     console.error(error.toString());
@@ -1359,39 +1422,27 @@ function generateApplicationNumber() {
 
 app.post('/api/saveLoanForm', uploadLoan, async (req, res) => {
   try {
-    const { loanAmount, firstName, lastName, email, phone, gcash, address, installmentPlan, installmentAmount, birthday} = req.body;
+    const { loanAmount, firstName, lastName, email, phone, gcash, address, installmentPlan, installmentAmount, birthday } = req.body;
 
- // Validate that both images are provided
-  const installmentImageFile = req.files['image'] ? req.files['image'][0] : null;
-  const selfieImageFile = req.files['selfieimage'] ? req.files['selfieimage'][0] : null;
-  if (!installmentImageFile || !selfieImageFile) {
-    return res.status(400).json({ error: 'Both ID image and selfie are required.' });
-  }
-   
-    // const params = {
-    //   Bucket: BucketName,
-    //   Key: req.file.originalname,
-    //   Body: req.file.buffer,
-    //   ContentType: req.file.mimetype,
-    // };
+    const installmentImageFile = req.files['image'] ? req.files['image'][0] : null;
+    const selfieImageFile = req.files['selfieimage'] ? req.files['selfieimage'][0] : null;
 
-    // const imageUrl = `https://${params.Bucket}.s3.amazonaws.com/${params.Key}`;
+    if (!installmentImageFile || !selfieImageFile) {
+      return res.status(400).json({ error: 'Both ID image and selfie are required.' });
+    }
 
     const startDate = new Date();
-  startDate.setDate(startDate.getDate() + 30); // Add 32 days to the current date
-  const endDate = new Date();
-  endDate.setDate(endDate.getDate() + (30 * installmentPlan)); // Add 32 days to the current date
+    startDate.setDate(startDate.getDate() + 30);
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + (30 * installmentPlan));
 
-  const formattedStartDate = startDate.toDateString(); // Convert to a readable date format
-  const formattedEndDate = endDate.toDateString(); // Convert to a readable date format
+    const formattedStartDate = startDate.toDateString();
+    const formattedEndDate = endDate.toDateString();
 
     const user = await pool.query('SELECT status FROM loanusers WHERE email = $1 ORDER BY created_at DESC LIMIT 1', [email]);
 
-    if (user.rows.length > 0) {
-      const lastStatus = user.rows[0].status;
-      if (lastStatus === 'pending') {
-        return res.status(400).json({ error: 'You cannot submit the form while your application is pending.' });
-      }
+    if (user.rows.length > 0 && user.rows[0].status === 'pending') {
+      return res.status(400).json({ error: 'You cannot submit the form while your application is pending.' });
     }
 
     const applicationNumber = generateApplicationNumber();
@@ -1403,74 +1454,80 @@ app.post('/api/saveLoanForm', uploadLoan, async (req, res) => {
 
     const userId = result.rows[0].id;
 
-    await sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, applicationNumber,phone, gcash, address, installmentImageFile, installmentPlan, installmentAmount, birthday, formattedStartDate, formattedEndDate, selfieImageFile);
+    const emailResult = await sendLoanApplicationEmail(
+      email, loanAmount, firstName, lastName, applicationNumber,
+      phone, gcash, address, installmentImageFile, installmentPlan,
+      installmentAmount, birthday, formattedStartDate, formattedEndDate, selfieImageFile
+    );
 
-    res.status(200).json({ userId, applicationNumber });
+    if (!emailResult.success) {
+      console.error('Email failed:', emailResult.error);
+      return res.status(500).json({ error: 'Loan saved, but email failed to send.' });
+    }
+
+    return res.status(200).json({ userId, applicationNumber });
+
   } catch (error) {
     console.error('Error saving loan form:', error);
-    res.status(500).json({ error: 'An error occurred while processing the loan application' });
+    return res.status(500).json({ error: 'An error occurred while processing the loan application' });
   }
 });
 
-async function sendLoanApplicationEmail(req, res, email, loanAmount, firstName, lastName, applicationNumber,phone, gcash, address, installmentImageFile, installmentPlan, installmentAmount, birthday, formattedStartDate, formattedEndDate, selfieImageFile) {
-  const sendGridApiKey = process.env.SENDGRID_API_KEY;
-  const sendGridEndpoint = 'https://api.sendgrid.com/v3/mail/send';
 
- 
-  const installmentImageBase64 = installmentImageFile ? installmentImageFile.buffer.toString('base64') : null;
-  const selfieImageBase64 = selfieImageFile ? selfieImageFile.buffer.toString('base64') : null;
+async function sendLoanApplicationEmail(
+  email, loanAmount, firstName, lastName, applicationNumber,
+  phone, gcash, address, installmentImageFile, installmentPlan,
+  installmentAmount, birthday, formattedStartDate, formattedEndDate, selfieImageFile
+) {
+  const attachments = [];
 
-  const sendGridData = {
-    personalizations: [
-      {
-        to: [{ email: 'ayeilvzarong@gmail.com' }],
-        subject: 'New Loan Application',
-      },
-    ],
-    from: { email: 'yeilvastore@gmail.com' },
-    content: [
-      {
-        type: 'text/plain',
-        value: `New loan application received!\n\nDetails:\nLoan Amount: ₱${loanAmount}\nName: ${firstName} ${lastName}\nApplication no: ${applicationNumber}\nEmail: ${email}
-        \nPhone: ${phone}\nGcash Account: ${gcash}\nAddress: ${address}\ninstallment Plan:${installmentPlan}\ninstallment Amount:₱${installmentAmount}\nBirthday:${birthday}
-         \nFirst Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}. You will receive an email to notify you of your payment schedule.`,
-      },
-    ],
-    attachments: [
-      ...(installmentImageBase64
-        ? [
-            {
-              content: installmentImageBase64,
-              filename: 'installment_image.jpg',
-              type: 'image/jpeg',
-              disposition: 'attachment',
-            },
-          ]
-        : []),
-      ...(selfieImageBase64
-        ? [
-            {
-              content: selfieImageBase64,
-              filename: 'selfie_image.jpg',
-              type: 'image/jpeg',
-              disposition: 'attachment',
-            },
-          ]
-        : []),
-    ],
+  if (installmentImageFile) {
+    attachments.push({
+      filename: 'installment_image.jpg',
+      content: installmentImageFile.buffer,
+      contentType: 'image/jpeg'
+    });
+  }
+
+  if (selfieImageFile) {
+    attachments.push({
+      filename: 'selfie_image.jpg',
+      content: selfieImageFile.buffer,
+      contentType: 'image/jpeg'
+    });
+  }
+
+  const mailOptions = {
+    from: '"YeilvaStore" <yeilvastore@gmail.com>',
+    to: 'bonz.ba50@gmail.com',
+    subject: 'New Loan Application',
+    text: `
+New loan application received!
+
+Details:
+Loan Amount: ₱${loanAmount}
+Name: ${firstName} ${lastName}
+Application no: ${applicationNumber}
+Email: ${email}
+Phone: ${phone}
+Gcash Account: ${gcash}
+Address: ${address}
+Installment Plan: ${installmentPlan}
+Installment Amount: ₱${installmentAmount}
+Birthday: ${birthday}
+First Payment will start on ${formattedStartDate} and ends on ${formattedEndDate}.
+You will receive an email to notify you of your payment schedule.
+    `,
+    attachments
   };
 
   try {
-    await axios.post(sendGridEndpoint, sendGridData, {
-      headers: {
-        Authorization: `Bearer ${sendGridApiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
-    console.log('Loan application email sent successfully');
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Email sent:', info.response);
+    return { success: true };
   } catch (error) {
-    console.error('Error sending loan application email:', error);
-    res.status(500).json({ error: 'Failed to send loan application email' });
+    console.error('Error sending email:', error);
+    return { success: false, error };
   }
 }
 
@@ -2171,7 +2228,7 @@ app.post('/registerfreecode', async (req, res) => {
 const sendEmail = async (email, voucherCode) => {
     const msg = {
         to: email,
-        from: 'yeilvastore@gmail.com', // Use your verified SendGrid sender email
+        from: '"YeilvaStore" <yeilvastore@gmail.com>',
         subject: 'Your Discount Voucher',
         text: `Congratulations! Here is your discount voucher code: ${voucherCode}`,
         html: `
@@ -2269,7 +2326,7 @@ const sendEmail = async (email, voucherCode) => {
     };
 
     try {
-        await sgMail.send(msg);
+        await transporter.sendMail(msg);
         console.log('Email sent successfully');
     } catch (error) {
         console.error('Error sending email:', error);
@@ -2323,7 +2380,7 @@ app.post('/openraffle', async (req, res) => {
 const openRaffleEmail = async (email, fullname) => {
     const msg = {
         to: email,
-        from: 'yeilvastore@gmail.com', // Your verified SendGrid sender email
+        from: '"YeilvaStore" <yeilvastore@gmail.com>',
         subject: 'Congratulations on Your Raffle Registration!',
         text: `Dear ${fullname}, Congratulations! Your raffle entry has been successfully submitted.`,
         html: `
@@ -2424,7 +2481,7 @@ const openRaffleEmail = async (email, fullname) => {
     };
 
     try {
-        await sgMail.send(msg);
+         await transporter.sendMail(msg);
         console.log('Email sent successfully');
     } catch (error) {
         console.error('Error sending email:', error);
@@ -2596,7 +2653,7 @@ const newsLetterEmail = async (email, fullname) => {
                 </div>
                 <div class="footer">
                     <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
-                    <p><a href="https://yeilvastore.com/unsubscribe" target="_blank">Unsubscribe</a> | <a href="https://yeilva-store.up.railway.app/privacy-policy" target="_blank">Privacy Policy</a></p>
+                    <p><a href="https://yeilvastore.com/unsubscribe" target="_blank">Unsubscribe</a> | <a href="https://yeilvastore.com/privacy-policy" target="_blank">Privacy Policy</a></p>
                 </div>
             </div>
         </body>
@@ -2605,7 +2662,7 @@ const newsLetterEmail = async (email, fullname) => {
     };
 
     try {
-        await sgMail.send(msg);
+        await transporter.sendMail(msg);
         console.log('Email sent successfully');
     } catch (error) {
         console.error('Error sending email:', error);
@@ -2685,11 +2742,11 @@ YeilvaSTORE`,
 
   try {
     // Send email to the internal team
-    await sgMail.send(internalEmail);
+    await transporter.sendMail(internalEmail);
     console.log(`Internal transaction email sent successfully to ${internalEmail.to}`);
 
     // Send confirmation email to the customer
-    await sgMail.send(customerEmail);
+     await transporter.sendMail(customerEmail);
     console.log(`Customer confirmation email sent successfully to ${email}`);
   } catch (error) {
     console.error('Error sending transaction emails:', error);
@@ -2775,7 +2832,7 @@ app.post('/gcashsettlement', async (req, res) => {
     };
 
     // Send the email
-    await sgMail.send(emailContent);
+    await transporter.sendMail(emailContent);
 
     // Respond to the frontend
     res.status(200).json({
@@ -2932,13 +2989,13 @@ app.post('/api/booking', async (req, res) => {
     `;
 
     const msg = {
-      to: 'ayeilvzarong@gmail.com', // Recipient email
+      to: 'bonz.ba50@gmail.com', // Recipient email
       from: 'yeilvastore@gmail.com', // Your verified sender email
       subject: `Booking Confirmation - ${transactionCode}`,
       html: emailContent,
     };
 
-    await sgMail.send(msg);
+   await transporter.sendMail(msg);
 
     // Respond with success message
     res.status(201).json({
