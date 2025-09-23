@@ -104,7 +104,7 @@ app.use('/api/check-auth', checkAuthRouter);
 // sgMail.setApiKey(SENDGRID_API_KEY);
 
 const transporter = nodemailer.createTransport({
-  host: 'mail.yeilvastore.com',
+  host: 'smtp.gmail.com',
   port: 465, // or 465 if using SSL/587 less secure
   secure: true, // true for port 465/false for 587
   auth: {
