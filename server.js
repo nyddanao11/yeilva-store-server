@@ -6,6 +6,7 @@ const cors = require('cors');
 const knex = require('knex');
 const cron = require('node-cron');
 const sgMail = require('@sendgrid/mail');
+const nodemailer = require('nodemailer');
 const { Pool } = require('pg');
 const axios = require('axios');
 const { Readable } = require('stream');
@@ -114,7 +115,6 @@ const transporter = nodemailer.createTransport({
 app.get('/', (req, res) => {
   res.send('This is working');
 });
-
 
 
 app.post('/signin', async (req, res) => {
