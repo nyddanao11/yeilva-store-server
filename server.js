@@ -5,8 +5,8 @@ const crypto =require('crypto');
 const cors = require('cors');
 const knex = require('knex');
 const cron = require('node-cron');
-const sgMail = require('@sendgrid/mail');
 const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const { Pool } = require('pg');
 const axios = require('axios');
 const { Readable } = require('stream');
@@ -29,7 +29,6 @@ const upload = multer({ storage: storage });
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const checkAuthRouter = require('./Routes/checkAuth');
-require('dotenv').config({ path: 'sendgrid.env' });
 require('dotenv').config({ path: 'paymongo.env' });
 require('dotenv').config({ path: 'tokensecret.env' });
 require('dotenv').config({ path: 's3.env' });
@@ -99,22 +98,20 @@ app.use(cookieParser());
 
 app.use('/api/check-auth', checkAuthRouter);
 
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-// const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
-// sgMail.setApiKey(SENDGRID_API_KEY);
-
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465, // or 465 if using SSL/587 less secure
-  secure: true, // true for port 465/false for 587
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  },
-  tls: {
-    rejectUnauthorized: false // optional, helps with self-signed certs
-  }
-});
+// const transporter = nodemailer.createTransport({
+//   host: 'smtp.gmail.com',
+//   port: 465, // or 465 if using SSL/587 less secure
+//   secure: true, // true for port 465/false for 587
+//   auth: {
+//     user: process.env.EMAIL_USER,
+//     pass: process.env.EMAIL_PASS
+//   },
+//   tls: {
+//     rejectUnauthorized: false // optional, helps with self-signed certs
+//   }
+// });
 
 // Routes
 app.get('/', (req, res) => {
@@ -287,9 +284,10 @@ app.post('/register', async (req, res) => {
     // Send the email after the response to the client
   const verificationLink = `https://yeilvastore.com/confirm?token=${token}`;
 
-const mailOptions = {
-    from: '"YeilvaStore" <noreply@yeilvastore.com>',
-    to: email,
+try {
+  const info = await resend.emails.send({
+    from: 'YeilvaStore <onboarding@email.yeilvastore.com>',
+    to: [email],
     subject: 'Confirm Your Email Address',
     html: `
         <!DOCTYPE html>
@@ -388,12 +386,9 @@ const mailOptions = {
         </body>
         </html>
     `
-};
+});
 
-    // Use a try-catch block for sending the email, but don't hold up the API response.
-    try {
-      const info = await transporter.sendMail(mailOptions);
-      console.log('Email sent:', info.response);
+   console.log('Email sent:', info);
     } catch (emailErr) {
       console.error('Error sending verification email:', emailErr);
     }
@@ -403,6 +398,7 @@ const mailOptions = {
     res.status(500).json({ error: 'An error occurred during registration.' });
   }
 });
+
 
 // Endpoint for handling email confirmation
 app.get('/confirm', async (req, res) => {
@@ -504,11 +500,10 @@ app.post('/checkout', async (req, res) => {
       // Send a success response with the inserted data
       res.json({ success: true, checkoutData: insertedOrder });
 
-
-        // Send an email with the checkout information to the customer
+  // Send an email with the checkout information to the customer
         const checkoutInfoEmailToCustomer = {
-          to: email,
-         from: '"YeilvaStore" <noreply@yeilvastore.com>',
+           from: 'YeilvaStore <noreply@email.yeilvastore.com>',
+          to: [email],
           subject: 'Checkout Information',
          html: `
     <html>
@@ -552,11 +547,10 @@ app.post('/checkout', async (req, res) => {
           `,
         }; 
 
-       
-      // Send an email with the checkout information to the admin
+          // Send an email with the checkout information to the admin
 const checkoutInfoEmailToAdmin = {
-  to: 'bonz.ba50@gmail.com',
-  from: 'yeilvastore@gmail.com',
+    from: 'YeilvaStore <noreply@email.yeilvastore.com>',
+   to: ['bonz.ba50@gmail.com'],
   subject: 'New Checkout Information',
   html: `
     <html>
@@ -602,11 +596,11 @@ const checkoutInfoEmailToAdmin = {
 };
 
 
-        try {
+       try {
   // Send checkout info email to customer
-  await transporter.sendMail(checkoutInfoEmailToCustomer);
+  await resend.emails.send(checkoutInfoEmailToCustomer);
   // Send checkout info email to admin
-  await transporter.sendMail(checkoutInfoEmailToAdmin);
+  await resend.emails.send(checkoutInfoEmailToAdmin);
   console.log('Checkout information emails sent successfully');
 } catch (error) {
   console.error('Error sending emails:', error);
@@ -620,6 +614,7 @@ const checkoutInfoEmailToAdmin = {
     res.status(500).json('An error occurred during checkout');
   }
 });
+
 
 // Generate an order number
 function generateOrderNumber() {
@@ -1071,10 +1066,11 @@ installmentAmount,
     );
 
  
-    // Prepare email data for customer
+       // Prepare email data for customer
     const checkoutEmailToCustomer = {
-      to: email,
-      from: 'yeilvastore@gmail.com',
+     
+      from: 'YeilvaStore <noreply@email.yeilvastore.com>',
+       to: [email],
       subject: 'Checkout Information',
       html: `
         <html>
@@ -1115,7 +1111,9 @@ installmentAmount,
       `,
     };
 
- const checkoutEmailToAdmin = async () => {
+ 
+
+const checkoutEmailToAdmin = async () => {
   const installmentAttachment = installmentImageFile
     ? {
         filename: 'installment_image.jpg',
@@ -1133,8 +1131,8 @@ installmentAmount,
     : null;
 
   const mailOptions = {
-    from: '"YeilvaStore" <yeilvastore@gmail.com>',
-    to: 'bonz.ba50@gmail.com',
+      from: 'YeilvaStore <noreply@email.yeilvastore.com>',
+    to: ['bonz.ba50@gmail.com'],
     subject: 'New Checkout Information',
     html: `
       <html>
@@ -1165,7 +1163,7 @@ installmentAmount,
   };
 
   try {
-    const info = await transporter.sendMail(mailOptions);
+    const info = await resend.emails.send(mailOptions);
     console.log('Admin email sent successfully:', info.response);
   } catch (error) {
     console.error('Error sending admin email:', error);
@@ -1174,7 +1172,7 @@ installmentAmount,
 };
 
     // Send the emails
-    await transporter.sendMail(checkoutEmailToCustomer);
+    await resend.emails.send(checkoutEmailToCustomer);
     await checkoutEmailToAdmin();  // Call the admin email function
 
     console.log('Checkout information emails sent successfully');
@@ -1187,6 +1185,7 @@ installmentAmount,
     res.status(500).json({ error: 'Internal server error during checkout' }); // Fixed this line
   }
 });
+
 
 
 
@@ -1338,14 +1337,14 @@ app.route('/api/send-otp')
 // Function to send OTP email using SendGrid
 async function sendOTPEmail(email, otp) {
   const msg = {
-    to: email,
-    from: '"YeilvaStore" <yeilvastore@gmail.com>',
+    from: 'YeilvaStore <onboarding@email.yeilvastore.com>',
+    to: [email],
     subject: 'Password Reset OTP',
     text: `Your OTP is: ${otp}`,
   };
 
   try {
-    await transporter.sendMail(msg);
+    await resend.emails.send(msg);
     console.log('Email sent successfully');
   } catch (error) {
     console.error(error.toString());
@@ -1502,9 +1501,9 @@ async function sendLoanApplicationEmail(
     });
   }
 
-  const mailOptions = {
-    from: '"YeilvaStore" <yeilvastore@gmail.com>',
-    to: 'bonz.ba50@gmail.com',
+ const mailOptions = {
+    from: 'YeilvaStore <admin@email.yeilvastore.com>',
+    to: ['bonz.ba50@gmail.com'],
     subject: 'New Loan Application',
     text: `
 New loan application received!
@@ -1527,7 +1526,7 @@ You will receive an email to notify you of your payment schedule.
   };
 
   try {
-    const info = await transporter.sendMail(mailOptions);
+    const info = await resend.emails.send(mailOptions);
     console.log('Email sent:', info.response);
     return { success: true };
   } catch (error) {
@@ -2232,8 +2231,8 @@ app.post('/registerfreecode', async (req, res) => {
 
 const sendEmail = async (email, voucherCode) => {
     const msg = {
-        to: email,
-        from: '"YeilvaStore" <yeilvastore@gmail.com>',
+        from: 'YeilvaStore <admin@email.yeilvastore.com>',
+         to: [email],
         subject: 'Your Discount Voucher',
         text: `Congratulations! Here is your discount voucher code: ${voucherCode}`,
         html: `
@@ -2331,7 +2330,7 @@ const sendEmail = async (email, voucherCode) => {
     };
 
     try {
-        await transporter.sendMail(msg);
+        await resend.emails.send(msg);
         console.log('Email sent successfully');
     } catch (error) {
         console.error('Error sending email:', error);
@@ -2384,8 +2383,8 @@ app.post('/openraffle', async (req, res) => {
 
 const openRaffleEmail = async (email, fullname) => {
     const msg = {
-        to: email,
-        from: '"YeilvaStore" <yeilvastore@gmail.com>',
+         from: 'YeilvaStore <admin@email.yeilvastore.com>',
+         to: [email],
         subject: 'Congratulations on Your Raffle Registration!',
         text: `Dear ${fullname}, Congratulations! Your raffle entry has been successfully submitted.`,
         html: `
@@ -2486,7 +2485,7 @@ const openRaffleEmail = async (email, fullname) => {
     };
 
     try {
-         await transporter.sendMail(msg);
+         await resend.emails.send(msg);
         console.log('Email sent successfully');
     } catch (error) {
         console.error('Error sending email:', error);
@@ -2555,8 +2554,8 @@ app.post('/newsletter', async (req, res) => {
 
 const newsLetterEmail = async (email, fullname) => {
     const msg = {
-        to: email,
-        from: 'yeilvastore@gmail.com', // Your verified SendGrid sender email
+        from: 'YeilvaStore <admin@email.yeilvastore.com>',
+         to: [email],
         subject: 'Welcome to Yeilva Store: You’re Subscribed!',
         text: `Dear ${fullname}, Congratulations! You're now successfully subscribed to the Yeilva Store Newsletter.`,
         html: `
@@ -2667,7 +2666,7 @@ const newsLetterEmail = async (email, fullname) => {
     };
 
     try {
-        await transporter.sendMail(msg);
+        await resend.emails.send(msg);
         console.log('Email sent successfully');
     } catch (error) {
         console.error('Error sending email:', error);
@@ -2678,8 +2677,8 @@ const newsLetterEmail = async (email, fullname) => {
 // Function to send the transaction confirmation email
 async function sendTransactionEmail({ email, firstname, lastname, transactionCode, amount }) {
   const internalEmail = {
-    to: 'ayeilvzarong@gmail.com',
-    from: 'yeilvastore@gmail.com',
+    from: 'YeilvaStore <admin@email.yeilvastore.com>',
+        to: ['bonz.ba50@gmail.com'],
     subject: 'GCash Transaction - Confirmation Needed',
     text: `Dear Team,
 
@@ -2710,8 +2709,8 @@ YeilvaSTORE`,
   };
 
   const customerEmail = {
-    to: email,
-    from: 'yeilvastore@gmail.com',
+    from: 'YeilvaStore <admin@email.yeilvastore.com>',
+    to: [email],
     subject: 'GCash Transaction - Payment Received',
     text: `Dear ${firstname} ${lastname},
 
@@ -2747,11 +2746,11 @@ YeilvaSTORE`,
 
   try {
     // Send email to the internal team
-    await transporter.sendMail(internalEmail);
+    await resend.emails.send(internalEmail);
     console.log(`Internal transaction email sent successfully to ${internalEmail.to}`);
 
     // Send confirmation email to the customer
-     await transporter.sendMail(customerEmail);
+     await resend.emails.send(customerEmail);
     console.log(`Customer confirmation email sent successfully to ${email}`);
   } catch (error) {
     console.error('Error sending transaction emails:', error);
@@ -2800,8 +2799,8 @@ app.post('/gcashsettlement', async (req, res) => {
 
     // Prepare the email content
     const emailContent = {
-      to: email,
-      from: 'yeilvastore@gmail.com', // Your verified sender email
+      from: 'YeilvaStore <admin@email.yeilvastore.com>',
+      to: [email],
       subject: 'Your GCash Settlement Details',
       html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -2837,7 +2836,7 @@ app.post('/gcashsettlement', async (req, res) => {
     };
 
     // Send the email
-    await transporter.sendMail(emailContent);
+    await resend.emails.send(emailContent);
 
     // Respond to the frontend
     res.status(200).json({
@@ -2994,13 +2993,13 @@ app.post('/api/booking', async (req, res) => {
     `;
 
     const msg = {
-      to: 'bonz.ba50@gmail.com', // Recipient email
-      from: 'yeilvastore@gmail.com', // Your verified sender email
+     from: 'YeilvaStore <admin@email.yeilvastore.com>',
+      to: [email],
       subject: `Booking Confirmation - ${transactionCode}`,
       html: emailContent,
     };
 
-   await transporter.sendMail(msg);
+   await resend.emails.send(msg);
 
     // Respond with success message
     res.status(201).json({
