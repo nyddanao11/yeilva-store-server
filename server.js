@@ -2322,7 +2322,7 @@ const sendEmail = async (email, voucherCode) => {
                     <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Shop Now</a></p>
                 </div>
                 <div class="footer">
-                    <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
+                    <p>&copy; ${new Date().getFullYear()} YeilvaStore. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -2477,7 +2477,7 @@ const openRaffleEmail = async (email, fullname) => {
                     <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Visit Yeilva Store</a></p>
                 </div>
                 <div class="footer">
-                    <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
+                    <p>&copy; ${new Date().getFullYear()} YeilvaStore. All rights reserved.</p>
                 </div>
             </div>
         </body>
@@ -2656,7 +2656,7 @@ const newsLetterEmail = async (email, fullname) => {
                     <a class="action-button" href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">Shop Now</a>
                 </div>
                 <div class="footer">
-                    <p>&copy; 2024 Yeilva Store. All rights reserved.</p>
+                    <p>&copy; ${new Date().getFullYear()} YeilvaStore. All rights reserved.</p>
                     <p><a href="https://yeilvastore.com/unsubscribe" target="_blank">Unsubscribe</a> | <a href="https://yeilvastore.com/privacy-policy" target="_blank">Privacy Policy</a></p>
                 </div>
             </div>
@@ -2922,6 +2922,7 @@ app.post('/receivedgcash', async (req, res) => {
 
 
 
+
 app.post('/api/booking', async (req, res) => {
   const {
     fullName,
@@ -2934,15 +2935,16 @@ app.post('/api/booking', async (req, res) => {
     address,
     passengers,
     phone,
-    class: travelClass,
+    class: travelClass,  
     transactionCode,
     accountName,
+     itinerary,
   } = req.body;
 
   const query = `
     INSERT INTO bookings
-    (full_name, email, departure_city, arrival_city, departure_date, return_date, birthday, address, passengers, phone, travel_class, submitted_date, transaction_code, account_name)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    (full_name, email, departure_city, arrival_city, departure_date, return_date, birthday, address, passengers, phone, travel_class, submitted_date, transaction_code, account_name, itinerary)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
     RETURNING id
   `;
 
@@ -2961,6 +2963,7 @@ app.post('/api/booking', async (req, res) => {
     new Date(),
     transactionCode,
     accountName,
+    itinerary
   ];
 
   try {
@@ -2968,38 +2971,47 @@ app.post('/api/booking', async (req, res) => {
     const result = await pool.query(query, values);
     const bookingId = result.rows[0].id;
 
-    // Send email using SendGrid
+    // Send email using resend
     const emailContent = `
-      <h1>Booking Confirmation</h1>
-      <p>Thank you for your booking, ${accountName}!</p>
-      <p><strong>Transaction Code:</strong> ${transactionCode}</p>
-      <p><strong>Passenger Name:</strong> ${fullName}</p>
-      <p><strong>Booking Details:</strong></p>
-      <ul>
-        <li><strong>Departure City:</strong> ${departureCity}</li>
-        <li><strong>Arrival City:</strong> ${arrivalCity}</li>
-        <li><strong>Departure Date:</strong> ${departureDate || 'N/A'}</li>
-        <li><strong>Return Date:</strong> ${returnDate || 'N/A'}</li>
-        <li><strong>Passengers:</strong> ${passengers}</li>
-        <li><strong>Travel Class:</strong> ${travelClass}</li>
-        <li><strong>Phone:</strong> ${phone}</li>
-        <li><strong>Email:</strong> ${email}</li>
-        <li><strong>Address:</strong> ${address}</li>
+       <div style="font-family: Arial, sans-serif; color: #333;">
+      <h2 style="color: #007BFF;">Booking Confirmation</h2>
+      <p>Hi ${accountName},</p>
+      <p>Thank you for booking with <strong>Yeilva Store</strong>! Below are your travel details:</p>
 
-      </ul>
-       <p><a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Visit Yeilva Store</a></p>
-        <p>Best regards,</p>
-        <p>Yeilva Store Team</p>
-    `;
+      <table style="width: 100%; border-collapse: collapse;">
+        <tr><td><strong>Transaction Code:</strong></td><td>${transactionCode}</td></tr>
+        <tr><td><strong>Passenger Name:</strong></td><td>${fullName}</td></tr>
+        <tr><td><strong>Departure City:</strong></td><td>${departureCity}</td></tr>
+        <tr><td><strong>Arrival City:</strong></td><td>${arrivalCity}</td></tr>
+        <tr><td><strong>Departure Date:</strong></td><td>${departureDate || 'N/A'}</td></tr>
+        <tr><td><strong>Return Date:</strong></td><td>${returnDate || 'N/A'}</td></tr>
+        <tr><td><strong>Passengers:</strong></td><td>${passengers}</td></tr>
+        <tr><td><strong>Travel Class:</strong></td><td>${travelClass}</td></tr>
+        <tr><td><strong>Itinerary:</strong></td><td>${itinerary}</td></tr>
+        <tr><td><strong>Phone:</strong></td><td>${phone}</td></tr>
+        <tr><td><strong>Email:</strong></td><td>${email}</td></tr>
+        <tr><td><strong>Address:</strong></td><td>${address}</td></tr>
+      </table>
 
-    const msg = {
-     from: 'YeilvaStore <admin@email.yeilvastore.com>',
-      to: [email],
-      subject: `Booking Confirmation - ${transactionCode}`,
-      html: emailContent,
-    };
+      <p style="margin-top: 20px;">You can always manage your bookings at <a href="https://yeilvastore.com" target="_blank">YeilvaStore.com</a>.</p>
+      <p>Safe travels!</p>
+      <p><strong>Yeilva Store Team</strong></p>
+    </div>
+  `;
 
-   await resend.emails.send(msg);
+  await resend.emails.send({
+  from: 'YeilvaStore <admin@email.yeilvastore.com>',
+  to: [email],
+  subject: `Your Booking Confirmation - ${transactionCode}`,
+  html: emailContent,
+});
+
+await resend.emails.send({
+  from: 'YeilvaStore <admin@email.yeilvastore.com>',
+  to: ['bonz.ba50@gmail.com'],
+  subject: `New Booking Received - ${transactionCode}`,
+  html: emailContent,
+});
 
     // Respond with success message
     res.status(201).json({
