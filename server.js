@@ -98,6 +98,9 @@ app.use(cookieParser());
 
 app.use('/api/check-auth', checkAuthRouter);
 
+// A secret key for signing your JWTs. Keep this in a secure environment variable.
+const JWT_SECRET = process.env.ACCESS_TOKEN_SECRET_LOGIN || 'your-super-secret-key'; 
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // const transporter = nodemailer.createTransport({
@@ -117,6 +120,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 app.get('/', (req, res) => {
   res.send('This is working');
 });
+
 
 
 app.post('/signin', async (req, res) => {
@@ -160,8 +164,11 @@ app.post('/signin', async (req, res) => {
       // Reset login attempts on successful login
       await db('users').where('email', '=', email).update({ login_attempts: 0, last_login_attempt: currentDateTime, lockout_until: null });
 
+     // ⭐ THE KEY CHANGE: Generate and return a JWT
+      const token = jwt.sign({ email: userData.email }, JWT_SECRET, { expiresIn: '1h' });
+      return res.json({ status: 'success', token: token});
       // Return success
-      return res.json({ status: 'success', email: email });
+      // return res.json({ status: 'success', email: email });
     } else {
       // If less than three attempts, update the login attempts and last login attempt timestamp
       if (loginAttempts < 3) {
@@ -194,6 +201,42 @@ app.post('/signin', async (req, res) => {
     console.error('Error during login:', err);
     return res.status(500).json({ error: 'An error occurred during login' });
   }
+});
+
+
+// This middleware will be used to protect routes that require authentication
+const authenticateToken = (req, res, next) => {
+    // Get the token from the Authorization header
+    const authHeader = req.headers['authorization'];
+    // The token is typically in the format "Bearer TOKEN"
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (token == null) {
+        // If there's no token, a user is not authenticated
+        return res.sendStatus(401); // Unauthorized
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) {
+            // If the token is not valid (e.g., expired, tampered with)
+            return res.sendStatus(403); // Forbidden
+        }
+        // If the token is valid, we can attach the user payload to the request
+        req.user = user;
+        // Continue to the next middleware or route handler
+        next();
+    });
+};
+
+// The new endpoint for the loginContext's useEffect to call
+app.get('/api/check-auth', authenticateToken, (req, res) => {
+    // If the request makes it here, the token has been successfully verified by the middleware.
+    // The 'req.user' object contains the payload we signed into the token (e.g., { email: 'user@example.com' })
+    // You can return a simple success message or user data.
+    res.json({
+        isAuthenticated: true,
+        user: { email: req.user.email } // Return some user data to the frontend
+    });
 });
 
 
