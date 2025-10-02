@@ -165,7 +165,7 @@ app.post('/signin', async (req, res) => {
       await db('users').where('email', '=', email).update({ login_attempts: 0, last_login_attempt: currentDateTime, lockout_until: null });
 
      // ⭐ THE KEY CHANGE: Generate and return a JWT
-      const token = jwt.sign({ email: userData.email }, JWT_SECRET, { expiresIn: '1h' });
+      const token = jwt.sign({ email: userData.email }, JWT_SECRET, { expiresIn: '8h' });
       return res.json({ status: 'success', token: token});
       // Return success
       // return res.json({ status: 'success', email: email });
