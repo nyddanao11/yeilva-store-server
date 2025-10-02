@@ -4,6 +4,8 @@ const bcrypt = require('bcrypt');
 const crypto =require('crypto');
 const cors = require('cors');
 const knex = require('knex');
+const http = require('http');
+const { Server } = require("socket.io");
 const cron = require('node-cron');
 const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
@@ -35,10 +37,10 @@ require('dotenv').config({ path: 's3.env' });
 require('dotenv').config();
 const { Sequelize, DataTypes, Op } = require('sequelize');
 
-
 const sequelize = new Sequelize(
   `postgres://${process.env.POSTGRES_USER}:${process.env.POSTGRES_PASSWORD}@${process.env.RAILWAY_TCP_PROXY_DOMAIN}:${process.env.RAILWAY_TCP_PROXY_PORT}/${process.env.POSTGRES_DB}`
 );
+
 
 const db = knex({
   client: 'pg',
@@ -92,6 +94,15 @@ app.use(cors({
   origin: 'https://yeilvastore.com', 
   credentials: true,
 }));
+
+const { Server } = require("socket.io");
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: 'https://yeilvastore.com', // Replace with your frontend URL
+    methods: ["GET", "POST"]
+  }
+});
 
 app.use(cookieParser());
 
@@ -484,196 +495,180 @@ const cleanNumericValue = (value) => {
 };
 
 
-/**
- * Middleware to authenticate a user using a JWT from the Authorization header,
- * find their corresponding user_id by email, and attach it to the request.
- */
-const authenticateUser = async (req, res, next) => {
-    // 1. Extract the token
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ error: 'Authorization token required.' });
+// --- HELPER FUNCTION: Reuses your GET query logic ---
+const fetchUserCart = async (userId) => {
+    // This is the same extensive SQL JOIN query from your app.get('/api/cart')
+    const query = `
+        SELECT
+            ci.product_id AS id,
+            ci.quantity AS quantity,
+            p.name, p.category, p.price, p.weight, p.stock, p.description,
+            p.product_details, p.url, p.thumbnails, p.discount, p.sizecolor,
+            p.shipping, p.place
+        FROM
+            cart_items ci
+        INNER JOIN
+            products p ON ci.product_id = p.id
+        WHERE
+            ci.user_id = $1
+        ORDER BY
+            ci.updated_at DESC;
+    `;
+    const result = await pool.query(query, [userId]);
+    return result.rows; // Returns the fully joined cart data
+};
+
+
+// --- SOCKET.IO AUTHENTICATION MIDDLEWARE ---
+// This runs only once per client connection.
+io.use(async (socket, next) => {
+    const token = socket.handshake.auth.token;
+
+    if (!token) {
+        return next(new Error('Authentication token missing.'));
     }
-    const token = authHeader.split(' ')[1]; // Get the token part
 
     let userEmail;
     try {
-        // 2. Verify and Decode the JWT
         const decoded = jwt.verify(token, JWT_SECRET);
-        // Assuming your JWT payload contains the email field
-        userEmail = decoded.email; 
+        userEmail = decoded.email;
     } catch (err) {
-        // Token is invalid, expired, or tampered with
-        return res.status(401).json({ error: 'Invalid or expired token.' });
+        return next(new Error('Invalid or expired token.'));
     }
 
-    if (!userEmail) {
-        return res.status(401).json({ error: 'Token is missing user identification (email).' });
-    }
-
-    // 3. Look up the user_id in the PostgreSQL database
     try {
+        // Look up the user_id in the database
         const result = await pool.query(
-            'SELECT user_id FROM users WHERE email = $1', // Assuming a 'users' table with 'email'
+            'SELECT user_id FROM users WHERE email = $1',
             [userEmail]
         );
 
         const user = result.rows[0];
 
         if (!user) {
-            // User found in token but not in database (e.g., deleted account)
-            return res.status(401).json({ error: 'User not found.' });
+            return next(new Error('User not found.'));
         }
 
-        // 4. Attach the user_id to the request object
-        req.userId = user.user_id;
-        
-        // Continue to the next middleware or route handler
-        next();
+        // IMPORTANT: Attach the userId directly to the socket object
+        socket.userId = user.user_id;
 
+        next(); // Authentication successful, allow connection
     } catch (dbError) {
-        console.error('Database error during user lookup:', dbError);
-        res.status(500).json({ error: 'Internal server error during authentication.' });
-    }
-};
-
-// --- Cart API Endpoints ---
-
-// -------------------------------------------------------------------------
-// 1. GET: Fetch the entire cart (Now requires a JOIN to get product details)
-// -------------------------------------------------------------------------
-app.get('/api/cart', authenticateUser, async (req, res) => {
-    try {
-        const { userId } = req;
-        
-        // SQL JOIN Query:
-        // - Joins cart_items (ci) and products (p) tables.
-        // - Selects ALL necessary product fields and aliases them to match your frontend structure (e.g., product_id AS id).
-        const query = `
-            SELECT
-                ci.product_id AS id,        -- Maps to your cartItems.id
-                ci.quantity AS quantity,                -- Maps to your cartItems.quantity
-                p.name,                     -- Maps to your cartItems.name
-                p.category,                 -- Maps to your cartItems.category
-                p.price,                    -- Maps to your cartItems.price
-                p.weight,                   -- Maps to your cartItems.weight
-                p.stock,                    -- Maps to your cartItems.stock
-                p.description,
-                p.product_details,
-                p.url,                      -- Maps to your cartItems.url
-                p.thumbnails,              -- Maps to your cartItems.thumbnails (PostgreSQL Array Type)
-                p.discount,
-                p.sizecolor,
-                p.shipping,
-                p.place
-            FROM
-                cart_items ci
-            INNER JOIN
-                products p ON ci.product_id = p.id
-            WHERE
-                ci.user_id = $1
-            ORDER BY
-                ci.updated_at DESC;
-        `;
-        
-   const result = await pool.query(query, [userId]);
-        // console.log('cartitems:', result);
-
-  
-        // Ensure that numeric types (price, discount) are converted to string
-        // if your frontend expects strings like "150.00", though JavaScript Numbers are preferred.
-        res.json(result.rows);
-        
-    } catch (err) {
-        console.error('Error fetching cart with product details:', err);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error('Database error during socket auth:', dbError);
+        next(new Error('Internal server error during authentication.'));
     }
 });
 
 
-// -------------------------------------------------------------------------
-// 2. POST: Add or update a product in the cart (Table name changed)
-// -------------------------------------------------------------------------
-app.post('/api/cart', authenticateUser, async (req, res) => {
-    const { product_id, quantity } = req.body;
-    const { userId } = req;
+// --- SOCKET.IO LOGIC: Cart Event Handlers ---
+io.on('connection', (socket) => {
+    console.log(`User ${socket.userId} connected with socket ID: ${socket.id}`);
 
-    if (!product_id || !quantity || quantity < 1) {
-        return res.status(400).json({ error: 'Invalid product_id or quantity.' });
-    }
+    const userId = socket.userId; // User ID is now securely available on the socket
+
+    // Function to fetch the cart and broadcast the update
+    const sendFullCartUpdate = async () => {
+        try {
+            const cartData = await fetchUserCart(userId);
+            // 'socket.emit' sends the data ONLY to the connecting client
+            socket.emit('cart:full_update', cartData); 
+        } catch (error) {
+            console.error('Error fetching cart for update:', error);
+            socket.emit('cart:update:error', 'Failed to retrieve cart data.');
+        }
+    };
     
-    // NOTE: In a real app, you should check if the product_id exists and if stock is available here.
+    // --- 1. Handle Initial Fetch (Replaces app.get) ---
+    socket.on('cart:get', () => {
+        // When the client connects and asks for the cart, send it.
+        sendFullCartUpdate(); 
+    });
 
-    try {
-        // Use the new 'cart_items' table name
-        const result = await pool.query(
-            `INSERT INTO cart_items (user_id, product_id, quantity)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (user_id, product_id) DO UPDATE
-             SET quantity = cart_items.quantity + $3, updated_at = NOW()
-             RETURNING product_id, quantity`,
-            [userId, product_id, quantity]
-        );
-        res.status(200).json(result.rows[0]);
-    } catch (err) {
-        console.error('Error adding/updating cart item:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+    // --- 2. Handle Add/Increment (Replaces app.post) ---
+    socket.on('cart:add', async (itemData) => {
+        const { product_id, quantity = 1 } = itemData;
 
-// -------------------------------------------------------------------------
-// 3. PUT: Set a specific quantity for an item (Table name changed)
-// -------------------------------------------------------------------------
-app.put('/api/cart/:productId', authenticateUser, async (req, res) => {
-    // Note: productId in params maps to product_id in the database
-    const { productId } = req.params;
-    const { quantity } = req.body;
-    const { userId } = req;
-
-    if (!quantity || quantity < 1) {
-        return res.status(400).json({ error: 'Quantity must be greater than 0.' });
-    }
-
-    try {
-        // Use the new 'cart_items' table name
-        const result = await pool.query(
-            'UPDATE cart_items SET quantity = $1, updated_at = NOW() WHERE user_id = $2 AND product_id = $3 RETURNING product_id, quantity',
-            [quantity, userId, productId]
-        );
-
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Item not found in cart.' });
+        if (!product_id || quantity < 1) {
+            return socket.emit('cart:update:error', 'Invalid product ID or quantity.');
         }
-        res.status(200).json(result.rows[0]);
-    } catch (err) {
-        console.error('Error updating item quantity:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
 
-// -------------------------------------------------------------------------
-// 4. DELETE: Remove a product from the cart (Table name changed)
-// -------------------------------------------------------------------------
-app.delete('/api/cart/:productId', authenticateUser, async (req, res) => {
-    const { productId } = req.params;
-    const { userId } = req;
+        try {
+            // Reuses the core logic from your old app.post
+            await pool.query(
+                `INSERT INTO cart_items (user_id, product_id, quantity)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (user_id, product_id) DO UPDATE
+                 SET quantity = cart_items.quantity + $3, updated_at = NOW()`,
+                [userId, product_id, quantity]
+            );
+            
+            // On success, push the full, updated cart back to the client
+            sendFullCartUpdate(); 
 
-    try {
-        // Use the new 'cart_items' table name
-        const result = await pool.query(
-            'DELETE FROM cart_items WHERE user_id = $1 AND product_id = $2 RETURNING *',
-            [userId, productId]
-        );
-
-        if (result.rowCount === 0) {
-            return res.status(404).json({ error: 'Item not found in cart.' });
+        } catch (err) {
+            console.error('Error adding/updating cart item:', err);
+            socket.emit('cart:update:error', 'Failed to add item to cart.');
         }
-        res.status(204).send();
-    } catch (err) {
-        console.error('Error removing item from cart:', err);
-        res.status(500).json({ error: 'Internal server error' });
-    }
+    });
+
+    // --- 3. Handle Quantity Change (Replaces app.put) ---
+    socket.on('cart:update_quantity', async (data) => {
+        const { itemId, quantity } = data; // Note: itemId is product_id in your DB
+
+        if (!quantity || quantity < 1) {
+            // Frontend should handle quantity < 1 (calling cart:remove)
+            return socket.emit('cart:update:error', 'Quantity must be greater than 0.');
+        }
+
+        try {
+            // Reuses the core logic from your old app.put
+            const result = await pool.query(
+                'UPDATE cart_items SET quantity = $1, updated_at = NOW() WHERE user_id = $2 AND product_id = $3 RETURNING product_id',
+                [quantity, userId, itemId]
+            );
+
+            if (result.rowCount === 0) {
+                return socket.emit('cart:update:error', 'Item not found in cart.');
+            }
+            
+            // On success, push the full, updated cart back to the client
+            sendFullCartUpdate(); 
+
+        } catch (err) {
+            console.error('Error updating item quantity:', err);
+            socket.emit('cart:update:error', 'Failed to update item quantity.');
+        }
+    });
+
+    // --- 4. Handle Remove Item (Replaces app.delete) ---
+    socket.on('cart:remove', async (data) => {
+        const { itemId } = data; // Note: itemId is product_id in your DB
+
+        try {
+            // Reuses the core logic from your old app.delete
+            const result = await pool.query(
+                'DELETE FROM cart_items WHERE user_id = $1 AND product_id = $2 RETURNING *',
+                [userId, itemId]
+            );
+
+            if (result.rowCount === 0) {
+                return socket.emit('cart:update:error', 'Item not found in cart.');
+            }
+            
+            // On success, push the full, updated cart back to the client
+            sendFullCartUpdate(); 
+            
+        } catch (err) {
+            console.error('Error removing item from cart:', err);
+            socket.emit('cart:update:error', 'Failed to remove item from cart.');
+        }
+    });
+
+    socket.on('disconnect', () => {
+        console.log(`User ${userId} disconnected.`);
+    });
 });
+
 
 
 app.post('/checkout', async (req, res) => {
@@ -3356,8 +3351,9 @@ app.post('/create-checkout-session', async (req, res) => {
 });
 
 
-
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
+// ✅ CORRECT: Use the 'server' variable, which is the http.createServer(app) 
+// instance that the Socket.IO server 'io' is attached to.
+server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-});
+}); 
