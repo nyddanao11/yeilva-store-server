@@ -512,7 +512,7 @@ const fetchUserCart = async (userId) => {
         WHERE
             ci.user_id = $1
         ORDER BY
-            ci.updated_at DESC;
+            ci.cart_item_id DESC;
     `;
     const result = await pool.query(query, [userId]);
     return result.rows; // Returns the fully joined cart data
