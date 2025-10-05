@@ -133,121 +133,177 @@ app.get('/', (req, res) => {
 });
 
 
-
 app.post('/signin', async (req, res) => {
-  const { email, password } = req.body;
+    const { email, password } = req.body;
 
-  try {
-    const userData = await db('users')
-      .select('email', 'password', 'verified', 'status', 'login_attempts', 'last_login_attempt', 'lockout_until')
-      .where('email', '=', email)
-      .first();
+    try {
+        const userData = await db('users')
+            .select('email', 'password', 'verified', 'status', 'login_attempts', 'last_login_attempt', 'lockout_until')
+            .where('email', '=', email)
+            .first();
 
-    // console.log('Retrieved userData:', userData);
+        if (!userData) {
+            return res.status(400).json({ error: 'Invalid credentials' });
+        }
 
-    if (!userData) {
-      return res.status(400).json({ error: 'Invalid credentials' });
+        // --- Pre-Auth Checks ---
+        if (!userData.verified) {
+            return res.status(400).json({ error: 'Email not verified. Please check your email for verification instructions.' });
+        }
+        if (userData.status !== 'active') {
+            return res.status(400).json({ error: 'Account deactivated' });
+        }
+        
+        const currentDateTime = new Date();
+        let lockoutUntil = userData.lockout_until;
+
+        // Check if the lockout period is still active
+        if (lockoutUntil && currentDateTime < new Date(lockoutUntil)) {
+            return res.status(400).json({
+                error: `Account locked. Please try again after ${Math.ceil((new Date(lockoutUntil) - currentDateTime) / (60 * 1000))} minutes.`,
+            });
+        }
+        
+        // --- Password Check ---
+        const isValid = bcrypt.compareSync(password, userData.password);
+
+        if (isValid) {
+            // ------------------------------------------------------------------
+            // SUCCESSFUL LOGIN: ONLY ISSUE TOKENS HERE
+            // ------------------------------------------------------------------
+            
+            // 1. Reset login attempts on successful login
+            await db('users').where('email', '=', email).update({ 
+                login_attempts: 0, 
+                last_login_attempt: currentDateTime, 
+                lockout_until: null 
+            });
+
+            // 2. Generate SHORT-LIVED ACCESS TOKEN (15 minutes)
+            const accessToken = jwt.sign({ email: userData.email }, JWT_SECRET, { expiresIn: '15m' });
+
+            // 3. Generate LONG-LIVED REFRESH TOKEN (7 days)
+            const refreshToken = jwt.sign({ email: userData.email }, REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+
+            // 4. Set the Refresh Token in an HTTP-ONLY, SECURE cookie
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true, 
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 7 * 24 * 60 * 60 * 1000, 
+            });
+
+            // 5. Send the short-lived ACCESS TOKEN back in the response body
+            return res.json({ status: 'success', token: accessToken });
+            
+        } else {
+            // ------------------------------------------------------------------
+            // FAILED LOGIN: Handle attempts and potential lockout
+            // ------------------------------------------------------------------
+            const loginAttempts = userData.login_attempts + 1;
+            
+            if (loginAttempts < 3) {
+                // If less than three attempts, update the login attempts
+                await db('users').where('email', '=', email).update({
+                    login_attempts: loginAttempts,
+                    last_login_attempt: currentDateTime,
+                });
+                return res.status(400).json({
+                    error: `Invalid credentials. Login attempt ${loginAttempts}/3.`,
+                });
+            } else {
+                // If the third attempt, set lockout
+                const lockoutTime = 15 * 60 * 1000; 
+                lockoutUntil = new Date(currentDateTime.getTime() + lockoutTime);
+
+                await db('users').where('email', '=', email).update({
+                    login_attempts: 0,
+                    last_login_attempt: currentDateTime,
+                    lockout_until: lockoutUntil,
+                });
+
+                return res.status(400).json({
+                    error: `Invalid credentials. Login attempt ${loginAttempts}/3. Account locked for ${Math.ceil(lockoutTime / (60 * 1000))} minutes.`,
+                });
+            }
+        }
+    } catch (err) {
+        console.error('Error during login:', err);
+        return res.status(500).json({ error: 'An error occurred during login' });
     }
-
-    if (!userData.verified) {
-      return res.status(400).json({ error: 'Email not verified. Please check your email for verification instructions.' });
-    }
-
-    if (userData.status !== 'active') {
-      return res.status(400).json({ error: 'Account deactivated' });
-    }
-
-    const currentDateTime = new Date();
-    const loginAttempts = userData.login_attempts + 1;
-
-    const isValid = bcrypt.compareSync(password, userData.password);
-
-    let lockoutUntil = userData.lockout_until;
-    
-    // Check if the lockout period is still active
-    if (lockoutUntil && currentDateTime < new Date(lockoutUntil)) {
-      return res.status(400).json({
-        error: `Account locked. Please try again after ${Math.ceil((new Date(lockoutUntil) - currentDateTime) / (60 * 1000))} minutes.`,
-      });
-    }
-
-    if (isValid) {
-      // Reset login attempts on successful login
-      await db('users').where('email', '=', email).update({ login_attempts: 0, last_login_attempt: currentDateTime, lockout_until: null });
-
-     // ⭐ THE KEY CHANGE: Generate and return a JWT
-      const token = jwt.sign({ email: userData.email }, JWT_SECRET, { expiresIn: '8h' });
-      return res.json({ status: 'success', token: token});
-      // Return success
-      // return res.json({ status: 'success', email: email });
-    } else {
-      // If less than three attempts, update the login attempts and last login attempt timestamp
-      if (loginAttempts < 3) {
-        await db('users').where('email', '=', email).update({
-          login_attempts: loginAttempts,
-          last_login_attempt: currentDateTime,
-        });
-      } else {
-        // If the third attempt, set lockout
-        const lockoutTime = 15 * 60 * 1000; // 15 minutes in milliseconds
-        lockoutUntil = new Date(currentDateTime.getTime() + lockoutTime);
-
-        await db('users').where('email', '=', email).update({
-          login_attempts: 0, // Reset login attempts after lockout
-          last_login_attempt: currentDateTime,
-          lockout_until: lockoutUntil,
-        });
-
-        return res.status(400).json({
-          error: `Invalid credentials. Login attempt ${loginAttempts}/3. Account locked for ${Math.ceil(lockoutTime / (60 * 1000))} minutes.`,
-        });
-      }
-
-      // Provide information about login attempts
-      return res.status(400).json({
-        error: `Invalid credentials. Login attempt ${loginAttempts}/3.`,
-      });
-    }
-  } catch (err) {
-    console.error('Error during login:', err);
-    return res.status(500).json({ error: 'An error occurred during login' });
-  }
 });
 
 
-// This middleware will be used to protect routes that require authentication
-const authenticateToken = (req, res, next) => {
-    // Get the token from the Authorization header
+// --- Middleware for Access Token Verification ---
+const authenticateAccessToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    // The token is typically in the format "Bearer TOKEN"
-    const token = authHeader && authHeader.split(' ')[1];
+    const accessToken = authHeader && authHeader.split(' ')[1];
 
-    if (token == null) {
-        // If there's no token, a user is not authenticated
-        return res.sendStatus(401); // Unauthorized
+    if (accessToken == null) {
+        // No token provided. Must be Unauthorized (401)
+        return res.sendStatus(401); 
     }
 
-    jwt.verify(token, JWT_SECRET, (err, user) => {
+    jwt.verify(accessToken, JWT_SECRET, (err, user) => {
         if (err) {
-            // If the token is not valid (e.g., expired, tampered with)
-            return res.sendStatus(403); // Forbidden
+            // Token expired or invalid. Respond with 401 so the interceptor attempts a refresh.
+            return res.sendStatus(401); 
         }
-        // If the token is valid, we can attach the user payload to the request
         req.user = user;
-        // Continue to the next middleware or route handler
         next();
     });
 };
+// Use authenticateAccessToken for all protected routes (e.g., app.get('/api/cart', authenticateAccessToken, ...))
 
-// The new endpoint for the loginContext's useEffect to call
-app.get('/api/check-auth', authenticateToken, (req, res) => {
-    // If the request makes it here, the token has been successfully verified by the middleware.
-    // The 'req.user' object contains the payload we signed into the token (e.g., { email: 'user@example.com' })
-    // You can return a simple success message or user data.
+// --- Existing Endpoint (Use the new middleware) ---
+app.get('/api/check-auth', authenticateAccessToken, (req, res) => {
+    // If the request makes it here, the Access Token is valid.
     res.json({
         isAuthenticated: true,
-        user: { email: req.user.email } // Return some user data to the frontend
+        user: { email: req.user.email }
     });
+});
+
+// ----------------------------------------------------------------------
+// NEW ENDPOINT: /auth/refresh - Handles Silent Access Token Renewal
+// ----------------------------------------------------------------------
+app.post('/auth/refresh', (req, res) => {
+    // The browser automatically sends the Refresh Token via the HTTP-only cookie.
+    const refreshToken = req.cookies.refreshToken;
+
+    if (!refreshToken) {
+        // No Refresh Token means no long-lived session is active.
+        return res.sendStatus(401); // Unauthorized
+    }
+
+    jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, async (err, user) => {
+        if (err) {
+            // Refresh Token is expired or invalid. Clear the cookie.
+            res.clearCookie('refreshToken');
+            return res.sendStatus(403); // Forbidden (Session is over)
+        }
+
+        // Optional: Check if the token is revoked in your database here.
+
+        // If valid, generate a new short-lived Access Token
+        const newAccessToken = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '15m' });
+
+        // Send the new Access Token back to the client
+        return res.json({ status: 'success', token: newAccessToken });
+    });
+});
+
+
+// ----------------------------------------------------------------------
+// NEW ENDPOINT: /api/logout - Clears the secure session
+// ----------------------------------------------------------------------
+app.post('/api/logout', (req, res) => {
+    // 1. Clear the HTTP-only Refresh Token cookie to destroy the session
+    res.clearCookie('refreshToken');
+
+    // 2. (Optional, if you store tokens): Invalidate the Refresh Token in your database
+
+    return res.json({ status: 'success', message: 'Logged out successfully' });
 });
 
 
