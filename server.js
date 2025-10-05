@@ -111,6 +111,7 @@ app.use('/api/check-auth', checkAuthRouter);
 
 // A secret key for signing your JWTs. Keep this in a secure environment variable.
 const JWT_SECRET = process.env.ACCESS_TOKEN_SECRET_LOGIN || 'your-super-secret-key'; 
+const REFRESH_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET_REFRESH || 'your-super-secret-key'; 
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
