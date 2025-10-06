@@ -235,35 +235,108 @@ app.post('/signin', async (req, res) => {
 });
 
 
-// --- Middleware for Access Token Verification ---
-const authenticateAccessToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const accessToken = authHeader && authHeader.split(' ')[1];
 
-    if (accessToken == null) {
-        // No token provided. Must be Unauthorized (401)
-        return res.sendStatus(401); 
+// --- MIDDLEWARE FOR ACCESS TOKEN AUTHENTICATION ---
+// This is crucial for setting req.user.id
+const authenticateAccessToken = async (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (token == null) {
+        return res.status(401).json({ error: "Access token missing." });
     }
 
-    jwt.verify(accessToken, JWT_SECRET, (err, user) => {
-        if (err) {
-            // Token expired or invalid. Respond with 401 so the interceptor attempts a refresh.
-            return res.sendStatus(401); 
+    try {
+        // 1. Verify the token using the ACCESS_TOKEN_SECRET
+        const decoded = jwt.verify(token, JWT_SECRET);
+        
+        // Ensure the decoded token has an identifier (we assume 'email' from signin)
+        if (!decoded.email) {
+            return res.status(403).json({ error: "Token payload invalid." });
         }
-        req.user = user;
-        next();
-    });
-};
-// Use authenticateAccessToken for all protected routes (e.g., app.get('/api/cart', authenticateAccessToken, ...))
 
-// --- Existing Endpoint (Use the new middleware) ---
-app.get('/api/check-auth', authenticateAccessToken, (req, res) => {
-    // If the request makes it here, the Access Token is valid.
-    res.json({
-        isAuthenticated: true,
-        user: { email: req.user.email }
-    });
+        // 2. Look up the user's Primary Key (id) using the email from the token
+        const user = await db('users')
+            .select('user_id') // Select the primary key as defined in schema.sql
+            .where({ email: decoded.email })
+            .first();
+
+        if (!user) {
+            return res.status(404).json({ error: "User not found." });
+        }
+
+        // 3. Attach the primary key (user_id) to the request object
+        req.user = { id: user.user_id }; 
+        
+        next(); // Proceed to the cart merge handler
+
+    } catch (err) {
+        // Token expired, invalid signature, etc.
+        console.error("Access Token Validation Error:", err.message);
+        return res.status(403).json({ error: "Invalid or expired access token." });
+    }
+};
+
+// ... (Keep all existing code above this point, including the signin and refresh endpoints)
+
+// ----------------------------------------------------------------------
+// NEW ENDPOINT: /api/cart/merge - Synchronizes local storage cart with DB
+// ----------------------------------------------------------------------
+app.post('/api/cart/merge', authenticateAccessToken, async (req, res) => {
+    const localCartItems = req.body.cartItems; // Array of { id: productId, quantity: N }
+    // FIX: Ensure userId is retrieved using the correct database column name (user_id)
+    const userId = req.user.id; 
+
+    if (!localCartItems || localCartItems.length === 0) {
+        return res.status(200).json({ status: 'success', message: 'No local items to merge.' });
+    }
+
+    try {
+        // Start a transaction to ensure all updates happen or none do
+        await db.transaction(async trx => {
+            const mergePromises = localCartItems.map(async (item) => {
+                // Check if the item already exists in the user's server cart
+                const existingItem = await trx('cart_items')
+                    // FIX: The field is user_id in the DB, so use userId variable
+                    .where({ user_id: userId, product_id: item.id })
+                    .first();
+
+                if (existingItem) {
+                    // If item exists, update the quantity (add the local quantity to the existing one)
+                    const newQuantity = existingItem.quantity + item.quantity;
+                    return trx('cart_items')
+                        .where({ cart_item_id: existingItem.cart_item_id })
+                        .update({ 
+                            quantity: newQuantity,
+                            updated_at: new Date()
+                        });
+                } else {
+                    // If item does not exist, insert the new item
+                    return trx('cart_items')
+                        .insert({
+                            user_id: userId,
+                            product_id: item.id,
+                            quantity: item.quantity,
+                        });
+                }
+            });
+
+            // Execute all merge operations
+            await Promise.all(mergePromises);
+        });
+
+        // After successful merge, notify the client it's done
+        // 🚨 IMPORTANT: You may also want to emit a WebSocket update here
+        // to force the client's CartProvider to instantly fetch the merged cart.
+        
+        return res.json({ status: 'success', message: 'Local cart merged successfully.' });
+
+    } catch (err) {
+        console.error('Error during cart merge:', err);
+        return res.status(500).json({ error: 'Failed to merge local cart items.' });
+    }
 });
+
 
 // ----------------------------------------------------------------------
 // NEW ENDPOINT: /auth/refresh - Handles Silent Access Token Renewal
