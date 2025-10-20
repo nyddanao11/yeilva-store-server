@@ -632,6 +632,7 @@ const fetchUserCart = async (userId) => {
         SELECT
             ci.product_id AS id,
             ci.quantity AS quantity,
+            ci.final_price,
             p.name, p.category, p.price, p.weight, p.stock, p.description,
             p.product_details, p.url, p.thumbnails, p.discount, p.sizecolor,
             p.shipping, p.place
@@ -716,7 +717,8 @@ io.on('connection', (socket) => {
 
     // --- 2. Handle Add/Increment (Replaces app.post) ---
     socket.on('cart:add', async (itemData) => {
-        const { product_id, quantity = 1 } = itemData;
+        const { product_id, quantity = 1, final_price } = itemData;
+        console.log('itemData:', itemData);
 
         if (!product_id || quantity < 1) {
             return socket.emit('cart:update:error', 'Invalid product ID or quantity.');
@@ -725,11 +727,13 @@ io.on('connection', (socket) => {
         try {
             // Reuses the core logic from your old app.post
             await pool.query(
-                `INSERT INTO cart_items (user_id, product_id, quantity)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (user_id, product_id) DO UPDATE
-                 SET quantity = cart_items.quantity + $3, updated_at = NOW()`,
-                [userId, product_id, quantity]
+              `INSERT INTO cart_items (user_id, product_id, quantity, final_price)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (user_id, product_id) DO UPDATE
+               SET quantity = cart_items.quantity + $3,
+                   final_price = EXCLUDED.final_price,
+                   updated_at = NOW()`,
+              [userId, product_id, quantity, final_price]
             );
             
             // On success, push the full, updated cart back to the client
@@ -802,180 +806,247 @@ io.on('connection', (socket) => {
 
 
 app.post('/checkout', async (req, res) => {
-  const {
-    firstname,
-    lastname, 
-    email,
-     // Destructure using frontend names and assign to backend names
-        streetAddress: address,     // Frontend's 'streetAddress' becomes backend's 'address'
-        stateProvince: province,    // Frontend's 'stateProvince' becomes backend's 'province'
-        phoneNumber: phone,         // Frontend's 'phoneNumber' becomes backend's 'phone'
-        city,                       // Add city if you want to store it
-        postalCode,                 // Add postalCode if you want to store it
-        fullName,                   // Add fullName if you want to store it
-        apartmentSuite,             // Add apartmentSuite if you want to store it
-    name,
-    quantity,
-    total,
-    paymentOption, 
-    productNames,
-    productPrice,
-    productUrl,
-    productWeight,
-  } = req.body;
-// console.log('CheckoutData', req.body);
-  try {
-       const cleanTotal = cleanNumericValue(total); // Clean the total value
-    // Start a database transaction
-    await db.transaction(async (trx) => {
-      // Generate the order number
-      const orderNumber = generateOrderNumber();
-      const estimatedDate = new Date();
-     estimatedDate.setDate(estimatedDate.getDate() + 8); // Add 9 days to the current date
-  
-  const formattedDeliveryDate = estimatedDate.toDateString(); // Convert to a readable date format
+    // 1. Validate and Destructure essential fields
+    const {
+        firstname, lastname, email,
+        streetAddress: address,
+        stateProvince: province,
+        phoneNumber: phone,
+        fullName,
+        city, // Added fields from your latest snippet
+        postalCode, // Added fields from your latest snippet
+        apartmentSuite, // Added fields from your latest snippet
+        name,
+        total, paymentOption,
+        voucherCode,
+        // The property 'items' contains the cart data. We name it 
+        items: cartItemsSource, 
+    } = req.body;
 
-      // Insert data into the 'checkout' table, including the order number and new fields
-      const insertedOrder = await trx('checkout')
-        .insert({
-          firstname, 
-          lastname, 
-          email,
-          address,    // Now correctly mapped from streetAddress
-          province,   // Now correctly mapped from stateProvince
-          phone,      // Now correctly mapped from phoneNumber
-          checkout_date: new Date(),
-          name,
-          quantity,
-          total: cleanTotal,  // Insert cleaned total
-          order_number: orderNumber,
-          payment_option: paymentOption,
-          productname: productNames,
-          deliverydate: formattedDeliveryDate,
-          price: productPrice,
-          url: productUrl,
-          weight: productWeight,
-        })
-        .returning('*');
+    // Data cleaning and setup (assuming helper functions exist)
+    const cleanTotal = cleanNumericValue(total);
+    const orderNumber = generateOrderNumber();
+    const estimatedDate = new Date();
+    estimatedDate.setDate(estimatedDate.getDate() + 8);
+    const formattedDeliveryDate = estimatedDate.toDateString();
 
-      // Send a success response with the inserted data
-      res.json({ success: true, checkoutData: insertedOrder });
+    // Safely extract cart items array.
+    const cartItems = Array.isArray(cartItemsSource) 
+        ? cartItemsSource 
+        : cartItemsSource?.items || [];
 
-  // Send an email with the checkout information to the customer
-        const checkoutInfoEmailToCustomer = {
-           from: 'YeilvaStore <noreply@email.yeilvastore.com>',
-          to: [email],
-          subject: 'Checkout Information',
-         html: `
-    <html>
-      <body>
-        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; padding: 20px;">
-          <h1 style="text-align: center;">Thank You for Your Order!</h1>
+    if (!Array.isArray(cartItems) || cartItems.length === 0) {
+        console.error('❌ Checkout failed: Cart items array is missing or empty.');
+        console.error('Received cart items source:', cartItemsSource); 
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Cart items are required for checkout.' 
+        });
+    }
 
-          <p>Dear ${firstname} ${lastname},</p>
-          
-          <p>We wanted to express our heartfelt thanks for choosing YeilvaSTORE for your recent purchase. Your order # ${orderNumber} has been received and is now being processed.</p>
+    try {
+        // Run the transaction, assigning the result to 'transactionResult'
+        const transactionResult = await db.transaction(async (trx) => {
+            
+            // --- A. Conditional Voucher Finalization ---
+            if (voucherCode) {
+                const updatedCount = await trx('Vouchers')
+                    .where({ code: voucherCode, isPendingUse: true })
+                    .update({ isActive: false, isPendingUse: false });
 
-          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Order Details</h3>
+                if (updatedCount === 0) {
+                    throw new Error(`Voucher ${voucherCode} could not be finalized.`);
+                }
+            }
 
-          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
-            <p><strong>Product:</strong> ${name}</p>
-            <p><strong>Total Amount:</strong> ${total}</p>
-            <p><strong>Payment Method:</strong> ${paymentOption}</p>
-          </div>
+            // --- B. Inventory Deduction ---
+            for (const item of cartItems) {
+                const { id: productId, quantity, name: productName } = item;
 
-          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
+                // 1. Lock the row to prevent race conditions
+                const [product] = await trx('products')
+                    .where('id', productId)
+                    .select('stock')
+                    .forUpdate()
+                    .limit(1);
 
-          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
-           <p><strong>Full name:</strong> ${fullName}</p>
-            <p><strong>Address:</strong> ${address}</p>
-           <p><strong>City:</strong> ${city}</p>
-            <p><strong>Province:</strong> ${province}</p>
-           <p><strong>Postal Code:</strong> ${postalCode}</p>
-          <p><strong>Apartment:</strong> ${apartmentSuite}</p>
-            <p><strong>Phone:</strong> ${phone}</p>
-          </div>
+                // 2. Validate Stock
+                if (!product || product.stock < quantity) {
+                    throw new Error(`Insufficient stock for product ${productName} (ID: ${productId}). Required: ${quantity}, Available: ${product ? product.stock : 0}.`);
+                }
 
-          <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at [yeilvastore@gmail.com] or [09497042268]. We're here to help!</p>
+                // 3. Deduct Stock
+                const updatedCount = await trx('products')
+                    .where('id', productId)
+                    .decrement('stock', quantity); 
 
-          <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
+                if (updatedCount === 0) {
+                    throw new Error(`Failed to update stock for product ${productName} (ID: ${productId}).`);
+                }
+            }
 
-          <p>Best regards,</p>
-         <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
-        </div>
-      </body>
-    </html>
-          `,
-        }; 
+            // --- C. Order Insertion ---
+            const firstItem = cartItems[0]; 
 
-          // Send an email with the checkout information to the admin
-const checkoutInfoEmailToAdmin = {
-    from: 'YeilvaStore <noreply@email.yeilvastore.com>',
-   to: ['bonz.ba50@gmail.com'],
-  subject: 'New Checkout Information',
-  html: `
-    <html>
-      <body>
-        <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; padding: 20px;">
-          <h1 style="text-align: center;">Thank You for Your Order!</h1>
+            const [orderResult] = await trx('checkout')
+                .insert({
+                    firstname, lastname, email, address, province, phone,
+                    total: cleanTotal,
+                    order_number: orderNumber,
+                    payment_option: paymentOption,
+                    checkout_date: new Date(),
+                    name,
+                    // Product details from the first item (assuming single item order or aggregated view)
+                    productname: firstItem.name, 
+                    quantity: firstItem.quantity,
+                    price: firstItem.price,
+                    url: firstItem.url, 
+                    weight: firstItem.weight, 
+                    deliverydate: formattedDeliveryDate,
+                })
+                .returning('*');
 
-          <p>Dear ${firstname} ${lastname},</p>
-          
-          <p>We wanted to express our heartfelt thanks for choosing YeilvaSTORE for your recent purchase. Your order # ${orderNumber} has been received and is now being processed.</p>
+            if (!orderResult) {
+                throw new Error('Failed to insert order into checkout table.');
+            }
+            
+            const insertedOrderObject = orderResult;
 
-          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Order Details</h3>
+            // --- D. Delete Cart Items ---
+            const cartItemIdsToDelete = cartItems.map(item => item.id);
+            // Execute deletion (assuming 'id' in cartItems maps to 'product_id' in cart_items table)
+            await trx('cart_items').whereIn('product_id', cartItemIdsToDelete).del();
 
-          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
-            <p><strong>Product:</strong> ${name}</p>
-             <p>Email Address: ${email}</p>
-            <p><strong>Total Amount:</strong> ${total}</p>
-            <p><strong>Payment Method:</strong> ${paymentOption}</p>
-          </div>
+            // Return both the order object and the list of deleted IDs
+            return { insertedOrderObject, deletedCartItemIds: cartItemIdsToDelete }; 
+        });
+        
+        // Destructure the results from the now-defined 'transactionResult'
+        const { insertedOrderObject: finalOrder, deletedCartItemIds } = transactionResult; 
 
-          <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
+        // ✅ Transaction committed successfully
+        res.json({ 
+            success: true, 
+            checkoutData: finalOrder, 
+            deletedCartItemIds: deletedCartItemIds // Used for frontend state sync
+        });
 
-          <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
-               <p><strong>Full name:</strong> ${fullName}</p>
-            <p><strong>Address:</strong> ${address}</p>
-           <p><strong>City:</strong> ${city}</p>
-            <p><strong>Province:</strong> ${province}</p>
-           <p><strong>Postal Code:</strong> ${postalCode}</p>
-          <p><strong>Apartment:</strong> ${apartmentSuite}</p>
-            <p><strong>Phone:</strong> ${phone}</p>
-          </div>
+    // 3. Knex automatically commits the transaction here if no error was thrown.
+         
+                        // Send an email with the checkout information to the customer
+                    const checkoutInfoEmailToCustomer = {
+                       from: 'YeilvaStore <noreply@email.yeilvastore.com>',
+                      to: [email],
+                      subject: 'Checkout Information',
+                     html: `
+                <html>
+                  <body>
+                    <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; padding: 20px;">
+                      <h1 style="text-align: center;">Thank You for Your Order!</h1>
 
-          <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at [yeilvastore@gmail.com] or [09497042268]. We're here to help!</p>
+                      <p>Dear ${firstname} ${lastname},</p>
+                      
+                      <p>We wanted to express our heartfelt thanks for choosing YeilvaSTORE for your recent purchase. Your order # ${orderNumber} has been received and is now being processed.</p>
 
-          <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
+                      <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Order Details</h3>
 
-          <p>Best regards,</p>
-         <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
-        </div>
-      </body>
-    </html>
-  `,
-};
+                      <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+                        <p><strong>Product:</strong> ${name}</p>
+                        <p><strong>Total Amount:</strong> ${total}</p>
+                        <p><strong>Payment Method:</strong> ${paymentOption}</p>
+                      </div>
+
+                      <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
+
+                      <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+                       <p><strong>Full name:</strong> ${fullName}</p>
+                        <p><strong>Address:</strong> ${address}</p>
+                       <p><strong>City:</strong> ${city}</p>
+                        <p><strong>Province:</strong> ${province}</p>
+                       <p><strong>Postal Code:</strong> ${postalCode}</p>
+                      <p><strong>Apartment:</strong> ${apartmentSuite}</p>
+                        <p><strong>Phone:</strong> ${phone}</p>
+                      </div>
+
+                      <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at [yeilvastore@gmail.com] or [09497042268]. We're here to help!</p>
+
+                      <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
+
+                      <p>Best regards,</p>
+                     <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+                    </div>
+                  </body>
+                </html>
+                      `,
+                    }; 
+
+                   
+                  // Send an email with the checkout information to the admin
+            const checkoutInfoEmailToAdmin = {
+                from: 'YeilvaStore <noreply@email.yeilvastore.com>',
+               to: ['bonz.ba50@gmail.com'],
+              subject: 'New Checkout Information',
+              html: `
+                <html>
+                  <body>
+                    <div style="max-width: 600px; margin: auto; font-family: Arial, sans-serif; padding: 20px;">
+                      <h1 style="text-align: center;">Thank You for Your Order!</h1>
+
+                      <p>Dear ${firstname} ${lastname},</p>
+                      
+                      <p>We wanted to express our heartfelt thanks for choosing YeilvaSTORE for your recent purchase. Your order # ${orderNumber} has been received and is now being processed.</p>
+
+                      <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Order Details</h3>
+
+                      <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+                        <p><strong>Product:</strong> ${name}</p>
+                         <p>Email Address: ${email}</p>
+                        <p><strong>Total Amount:</strong> ${total}</p>
+                        <p><strong>Payment Method:</strong> ${paymentOption}</p>
+                      </div>
+
+                      <h3 style="background-color: #f4f4f4; padding: 10px; margin: 0;">Shipping Address</h3>
+
+                      <div style="padding: 10px; border: 1px solid #ddd; border-radius: 5px; margin-bottom: 10px;">
+                           <p><strong>Full name:</strong> ${fullName}</p>
+                        <p><strong>Address:</strong> ${address}</p>
+                       <p><strong>City:</strong> ${city}</p>
+                        <p><strong>Province:</strong> ${province}</p>
+                       <p><strong>Postal Code:</strong> ${postalCode}</p>
+                      <p><strong>Apartment:</strong> ${apartmentSuite}</p>
+                        <p><strong>Phone:</strong> ${phone}</p>
+                      </div>
+
+                      <p>If you have any questions or need further assistance, please don't hesitate to reach out to our customer support team at [yeilvastore@gmail.com] or [09497042268]. We're here to help!</p>
+
+                      <p>Thank you again for choosing YeilvaSTORE. We appreciate your business and look forward to serving you in the future.</p>
+
+                      <p>Best regards,</p>
+                     <p><a href="https://yeilva-store.up.railway.app" target="_blank" rel="noopener noreferrer">YeilvaStore</a></p>
+                    </div>
+                  </body>
+                </html>
+              `,
+            };
+
+               
+            // 4. Send Emails (Non-transactional, outside the core database logic)
+            try {  
+                await resend.emails.send(checkoutInfoEmailToCustomer);
+                await resend.emails.send(checkoutInfoEmailToAdmin);
+                console.log('Checkout information emails sent successfully');
+            } catch (error) {
+                console.error('Error sending emails (NOTE: Order was placed):', error);
+                // Non-critical failure: log and continue.
+            }
 
 
-       try {
-  // Send checkout info email to customer
-  await resend.emails.send(checkoutInfoEmailToCustomer);
-  // Send checkout info email to admin
-  await resend.emails.send(checkoutInfoEmailToAdmin);
-  console.log('Checkout information emails sent successfully');
-} catch (error) {
-  console.error('Error sending emails:', error);
-  // Handle email sending errors
-}
-
-      console.log('Checkout information emails sent successfully');
-    }); // Close the try block here
-  } catch (error) {
-    console.error('Error during checkout:', error);
-    res.status(500).json('An error occurred during checkout');
-  }
+    } catch (error) {
+        // Knex automatically rolls back the transaction on any error thrown in the block.
+        console.error('Error during checkout:', error.message || error);
+        res.status(500).json({ error: 'An error occurred during checkout' });
+    }
 });
-
 
 // Generate an order number
 function generateOrderNumber() {
@@ -2476,14 +2547,28 @@ const Voucher = sequelize.define('Voucher', {
     type: DataTypes.DATE,
     allowNull: false,
   },
+  maxUses: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1, // single-use by default
+  },
+  timesUsed: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
   isActive: {
     type: DataTypes.BOOLEAN,
     defaultValue: true,
   },
-    selected: {
+  isPendingUse: {
     type: DataTypes.BOOLEAN,
-    defaultValue: false
-  }
+    defaultValue: false,
+  },
+  pendingUseExpiresAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
 });
 
 // Sync the model with the database
@@ -2505,21 +2590,47 @@ app.post('/api/vouchers', async (req, res) => {
 // Validate a voucher
 app.post('/api/vouchers/validate', async (req, res) => {
   const { code } = req.body;
+
+  const transaction = await sequelize.transaction();
   try {
-    const voucher = await Voucher.findOne({ where: { code, isActive: true } });
-    if (voucher && new Date(voucher.expirationDate) > new Date()) {
-      // Deactivate the voucher after validation
-      voucher.isActive = false;
-      await voucher.save();
-      res.json(voucher);
-    } else {
-      res.status(400).json({ error: 'Invalid or expired voucher' });
+    const [updated] = await Voucher.update(
+      {
+        isPendingUse: true,
+        pendingUseExpiresAt: new Date(Date.now() + 15 * 60 * 1000),
+      },
+      {
+        where: {
+          code,
+          isActive: true,
+          isPendingUse: false,
+          expirationDate: { [Op.gt]: new Date() },
+          timesUsed: { [Op.lt]: sequelize.col('maxUses') }, // not fully used
+        },
+        transaction,
+      }
+    );
+
+    if (updated === 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        error: 'Invalid, expired, fully used, or currently in use voucher.',
+      });
     }
-  } catch (error) {
-    res.status(400).json({ error: error.message });
+
+    const voucher = await Voucher.findOne({ where: { code }, transaction });
+    await transaction.commit();
+
+    console.log(`[Voucher] Code ${code} locked for pending use.`);
+    res.json({
+      message: 'Voucher validated and locked for 15 minutes.',
+      voucher,
+    });
+  } catch (err) {
+    await transaction.rollback();
+    console.error('Voucher validation failed:', err);
+    res.status(500).json({ error: 'Server error during validation.' });
   }
 });
-
 
 // Schedule a task to run at 00:00 on the first day of every month
 cron.schedule('0 0 1 * *', async () => {
@@ -2541,6 +2652,37 @@ cron.schedule('0 0 1 * *', async () => {
   }
 });
 
+// Run every 5 minutes
+cron.schedule('*/5 * * * *', async () => {
+  try {
+    const now = new Date();
+    
+    // Use a single update query for better performance and atomicity
+    const [updatedCount] = await Voucher.update(
+      {
+        isPendingUse: false,
+        pendingUseExpiresAt: null,
+      },
+      {
+        where: {
+          isPendingUse: true,
+          // Check for all vouchers whose expiration time is strictly less than 'now'
+          pendingUseExpiresAt: { [Op.lt]: now }, 
+        },
+      }
+    );
+
+    if (updatedCount > 0) {
+      console.log(`[Voucher Cleanup] ${updatedCount} pending voucher(s) reset.`);
+    }
+
+    return updatedCount;
+  } catch (err) {
+    console.error('Voucher cleanup failed:', err);
+    // You might want to re-throw the error or ensure the process stays healthy
+    return 0;
+  }
+});
 
 app.post('/registerfreecode', async (req, res) => {
     const { email, deviceInfo } = req.body;
