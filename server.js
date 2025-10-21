@@ -345,30 +345,56 @@ app.post('/api/cart/merge', authenticateAccessToken, async (req, res) => {
 // ----------------------------------------------------------------------
 // NEW ENDPOINT: /auth/refresh - Handles Silent Access Token Renewal
 // ----------------------------------------------------------------------
-app.post('/auth/refresh', (req, res) => {
-    // The browser automatically sends the Refresh Token via the HTTP-only cookie.
+app.post('/auth/refresh', async (req, res) => {
+    // 1. Get the Refresh Token from the HTTP-only cookie
     const refreshToken = req.cookies.refreshToken;
 
+    // Check if the refresh token cookie exists
     if (!refreshToken) {
-        // No Refresh Token means no long-lived session is active.
-        return res.sendStatus(401); // Unauthorized
+        // If no refresh token, the user is not authenticated/session is invalid
+        // Crucial: Use 401 instead of 403 here, as the token is missing, not invalid.
+        return res.status(401).json({ error: 'Authentication required. No refresh token provided.' });
     }
 
-    jwt.verify(refreshToken, REFRESH_TOKEN_SECRET, async (err, user) => {
-        if (err) {
-            // Refresh Token is expired or invalid. Clear the cookie.
-            res.clearCookie('refreshToken');
-            return res.sendStatus(403); // Forbidden (Session is over)
+    try {
+        // 2. Verify the Refresh Token SYNCHRONOUSLY using the secret
+        // Note: We use the synchronous version of verify to easily wrap the database call in the try/catch.
+        const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET || REFRESH_TOKEN_SECRET); 
+        
+        // 3. Look up the user in the database (MANDATORY CHECK)
+        // This confirms the user still exists and their email is valid.
+        const userData = await db('users')
+            .select('email', 'status') // Fetch status for additional check
+            .where('email', '=', decoded.email)
+            .first();
+
+        if (!userData || userData.status !== 'active') {
+            // User not found, deleted, or deactivated. Destroy the session.
+            res.clearCookie('refreshToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
+            return res.status(401).json({ error: 'User session invalid or account deactivated.' });
         }
+        
+        // 4. Generate a BRAND NEW short-lived ACCESS TOKEN (15 minutes)
+        const newAccessToken = jwt.sign({ email: userData.email }, process.env.JWT_SECRET || JWT_SECRET, { 
+            expiresIn: '15m' 
+        });
 
-        // Optional: Check if the token is revoked in your database here.
+        // 5. Send the new Access Token back to the client
+        return res.json({ 
+            status: 'success', 
+            token: newAccessToken 
+        });
 
-        // If valid, generate a new short-lived Access Token
-        const newAccessToken = jwt.sign({ email: user.email }, JWT_SECRET, { expiresIn: '15m' });
-
-        // Send the new Access Token back to the client
-        return res.json({ status: 'success', token: newAccessToken });
-    });
+    } catch (err) {
+        // If verification fails (e.g., token expired, tampered)
+        console.error('Refresh Token Verification Error:', err.message);
+        
+        // Clear the bad cookie. Must include cookie options to ensure it clears correctly.
+        res.clearCookie('refreshToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' }); 
+        
+        // Send 403 Forbidden/Unauthorized
+        return res.status(403).json({ error: 'Invalid or expired session. Please log in again.' });
+    }
 });
 
 
@@ -377,7 +403,7 @@ app.post('/auth/refresh', (req, res) => {
 // ----------------------------------------------------------------------
 app.post('/api/logout', (req, res) => {
     // 1. Clear the HTTP-only Refresh Token cookie to destroy the session
-    res.clearCookie('refreshToken');
+  res.clearCookie('refreshToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
 
     // 2. (Optional, if you store tokens): Invalidate the Refresh Token in your database
 
