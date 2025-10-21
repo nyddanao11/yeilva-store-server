@@ -106,6 +106,10 @@ const io = new Server(server, {
 
 app.use(cookieParser());
 
+// line to check user token is valid
+// This tells Express to trust the headers passed by the Railway proxy/load balancer,
+// ensuring that req.protocol is correctly set to 'https'.
+app.set('trust proxy', 1);
 
 app.use('/api/check-auth', checkAuthRouter);
 
@@ -190,7 +194,7 @@ app.post('/signin', async (req, res) => {
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true, 
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: 'strict',
+                sameSite: 'lax',
                 maxAge: 7 * 24 * 60 * 60 * 1000, 
             });
 
