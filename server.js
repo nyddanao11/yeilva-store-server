@@ -189,13 +189,16 @@ app.post('/signin', async (req, res) => {
 
             // 3. Generate LONG-LIVED REFRESH TOKEN (7 days)
             const refreshToken = jwt.sign({ email: userData.email }, REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
-
+           // Define the root domain for shared cookies (e.g., .yeilvastore.com)
+            const cookieDomain = process.env.NODE_ENV === 'production' ? '.yeilvastore.com' : undefined;
             // 4. Set the Refresh Token in an HTTP-ONLY, SECURE cookie
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true, 
                 secure: process.env.NODE_ENV === 'production',
                 sameSite: 'lax',
                 maxAge: 7 * 24 * 60 * 60 * 1000, 
+                 // CRITICAL FIX: Add the domain to share the cookie across subdomains (e.g., api.yeilvastore.com -> www.yeilvastore.com)
+                domain: cookieDomain // This must be the TLD prefixed with a dot
             });
 
             // 5. Send the short-lived ACCESS TOKEN back in the response body
