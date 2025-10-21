@@ -381,7 +381,6 @@ app.post('/api/logout', (req, res) => {
 });
 
 
-
 app.get('/api/userstatus', async (req, res) => {
   try {
     const userStatusEmail = req.query.email;
@@ -745,7 +744,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- 3. Handle Quantity Change (Replaces app.put) ---
+     // --- 3. Handle Quantity Change (Replaces app.put) ---
     socket.on('cart:update_quantity', async (data) => {
         const { itemId, quantity } = data; // Note: itemId is product_id in your DB
 
