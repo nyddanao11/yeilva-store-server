@@ -87,9 +87,13 @@ app.use(express.json());
 // Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+// line to check user token is valid
+// This tells Express to trust the headers passed by the Railway proxy/load balancer,
+// ensuring that req.protocol is correctly set to 'https'.
+app.set('trust proxy', 1);
+
+
 // app.use(cors());
-
-
 app.use(cors({ 
   origin: 'https://yeilvastore.com', 
   credentials: true,
@@ -106,10 +110,20 @@ const io = new Server(server, {
 
 app.use(cookieParser());
 
-// line to check user token is valid
-// This tells Express to trust the headers passed by the Railway proxy/load balancer,
-// ensuring that req.protocol is correctly set to 'https'.
-app.set('trust proxy', 1);
+const allowedOrigins = ['https://yeilvastore.com', 'https://www.yeilvastore.com'];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin); // Dynamically set the allowed origin
+  }
+
+  res.header('Access-Control-Allow-Credentials', true);
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  next();
+});
 
 app.use('/api/check-auth', checkAuthRouter);
 
@@ -190,11 +204,16 @@ app.post('/signin', async (req, res) => {
             // 3. Generate LONG-LIVED REFRESH TOKEN (7 days)
             const refreshToken = jwt.sign({ email: userData.email }, REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
           
+           // Define the root domain for shared cookies (e.g., .yeilvastore.com)
+            const cookieDomain = process.env.NODE_ENV === 'production' ? '.yeilvastore.com' : undefined;
+            // 4. Set the Refresh Token in an HTTP-ONLY, SECURE cookie
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true, 
+                secure: process.env.NODE_ENV === 'production',
                 sameSite: 'none',
                 maxAge: 7 * 24 * 60 * 60 * 1000, 
-               
+                 // CRITICAL FIX: Add the domain to share the cookie across subdomains (e.g., api.yeilvastore.com -> www.yeilvastore.com)
+                domain: cookieDomain // This must be the TLD prefixed with a dot
             });
 
             // 5. Send the short-lived ACCESS TOKEN back in the response body
@@ -2321,22 +2340,6 @@ async function isValidCredentials(username, password) {
     return false;
   }
 }
-
-const allowedOrigins = ['https://yeilvastore.com', 'https://www.yeilvastore.com'];
-
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-
-  if (allowedOrigins.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin); // Dynamically set the allowed origin
-  }
-
-  res.header('Access-Control-Allow-Credentials', true);
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  next();
-});
-
 
 app.post('/api/adminlogin', async (req, res) => {
   const { username, password } = req.body;
