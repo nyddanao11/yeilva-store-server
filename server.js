@@ -205,7 +205,7 @@ app.post('/signin', async (req, res) => {
             const refreshToken = jwt.sign({ email: userData.email }, REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
           
            // Define the root domain for shared cookies (e.g., .yeilvastore.com)
-            const cookieDomain = process.env.NODE_ENV === 'production' ? '.yeilvastore.com' : undefined;
+            const cookieDomain = process.env.NODE_ENV === 'production' ? 'https://yeilvastore.com' : undefined;
             // 4. Set the Refresh Token in an HTTP-ONLY, SECURE cookie
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true, 
