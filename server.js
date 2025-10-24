@@ -385,7 +385,7 @@ app.post('/auth/refresh', async (req, res) => {
 
         if (!userData || userData.status !== 'active') {
             // User not found, deleted, or deactivated. Destroy the session.
-            res.clearCookie('refreshToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
+            res.clearCookie('refreshToken', { httpOnly: true,  secure: true, sameSite: 'none' });
             return res.status(401).json({ error: 'User session invalid or account deactivated.' });
         }
         
@@ -405,7 +405,7 @@ app.post('/auth/refresh', async (req, res) => {
         console.error('Refresh Token Verification Error:', err.message);
         
         // Clear the bad cookie. Must include cookie options to ensure it clears correctly.
-        res.clearCookie('refreshToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' }); 
+        res.clearCookie('refreshToken', { httpOnly: true,  secure: true, sameSite: 'none' }); 
         
         // Send 403 Forbidden/Unauthorized
         return res.status(403).json({ error: 'Invalid or expired session. Please log in again.' });
@@ -418,7 +418,7 @@ app.post('/auth/refresh', async (req, res) => {
 // ----------------------------------------------------------------------
 app.post('/api/logout', (req, res) => {
     // 1. Clear the HTTP-only Refresh Token cookie to destroy the session
-  res.clearCookie('refreshToken', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' });
+  res.clearCookie('refreshToken', { httpOnly: true,  secure: true, sameSite: 'none' });
 
     // 2. (Optional, if you store tokens): Invalidate the Refresh Token in your database
 
