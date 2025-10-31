@@ -298,7 +298,6 @@ const authenticateAccessToken = async (req, res, next) => {
 
 // ... (Keep all existing code above this point, including the signin and refresh endpoints)
 
-// ----------------------------------------------------------------------
 // NEW ENDPOINT: /api/cart/merge - Synchronizes local storage cart with DB
 // ----------------------------------------------------------------------
 app.post('/api/cart/merge', authenticateAccessToken, async (req, res) => {
@@ -310,37 +309,44 @@ app.post('/api/cart/merge', authenticateAccessToken, async (req, res) => {
         return res.status(200).json({ status: 'success', message: 'No local items to merge.' });
     }
 
-    try {
-        // Start a transaction to ensure all updates happen or none do
+   try {
         await db.transaction(async trx => {
             const mergePromises = localCartItems.map(async (item) => {
-                // Check if the item already exists in the user's server cart
+                // 1. Check if the item already exists
                 const existingItem = await trx('cart_items')
-                    // FIX: The field is user_id in the DB, so use userId variable
                     .where({ user_id: userId, product_id: item.id })
                     .first();
 
+                // 🚨 Price fix: Get the price from the local item being merged
+                const priceToMerge = item.final_price || item.price; 
+                
                 if (existingItem) {
-                    // If item exists, update the quantity (add the local quantity to the existing one)
+                    // 2. UPDATE PATH: Item exists
                     const newQuantity = existingItem.quantity + item.quantity;
+                    
+                    // 🎯 FIX A: Ensure price is updated/preserved during the merge
+                    // We update the price using the price from the local item being merged, 
+                    // which is necessary if the price changed while the user was logged out.
                     return trx('cart_items')
                         .where({ cart_item_id: existingItem.cart_item_id })
                         .update({ 
                             quantity: newQuantity,
+                            final_price: priceToMerge, // <-- INCLUDED FINAL PRICE HERE
                             updated_at: new Date()
                         });
                 } else {
-                    // If item does not exist, insert the new item
+                    // 3. INSERT PATH: Item does not exist
+                    // 🎯 FIX B: Ensure price is included in the insert
                     return trx('cart_items')
                         .insert({
                             user_id: userId,
                             product_id: item.id,
                             quantity: item.quantity,
+                            final_price: priceToMerge, // <-- INCLUDED FINAL PRICE HERE
                         });
                 }
             });
 
-            // Execute all merge operations
             await Promise.all(mergePromises);
         });
 
@@ -947,6 +953,7 @@ app.post('/checkout', async (req, res) => {
                     url: firstItem.url, 
                     weight: firstItem.weight, 
                     deliverydate: formattedDeliveryDate,
+                    productid:firstItem.id,
                 })
                 .returning('*');
 
@@ -1184,7 +1191,7 @@ app.get('/api/userorderdata', async (req, res) => {
     // console.log('Received request for user email:', userEmail);
 
     const query = `
-      SELECT productname, price, url, order_number, checkout_date, weight
+      SELECT productname, price, url, order_number, checkout_date, weight, productid
       FROM checkout
       WHERE email = $1 AND orderstatus::INTEGER < 4
       ORDER BY orderstatus::INTEGER DESC
