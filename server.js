@@ -3662,6 +3662,16 @@ app.post('/api/contact', async (req, res) => {
   const { name, email, project, message } = req.body;
 
   try {
+    // CHECK FOR DUPLICATE EMAIL
+    const checkUser = await pool.query(
+      'SELECT * FROM client_inquiries WHERE email = $1', 
+      [email]
+    );
+
+    if (checkUser.rows.length > 0) {
+      // Return 409 Conflict if email exists
+      return res.status(409).json({ message: 'Email already exists' });
+    }
     // 2. Save to Database first
     const dbQuery = `
       INSERT INTO client_inquiries (name, email, project_tier, message)
