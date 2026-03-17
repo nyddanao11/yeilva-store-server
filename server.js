@@ -3658,6 +3658,79 @@ app.post('/create-checkout-session', async (req, res) => {
 });
 
 
+app.post('/api/contact', async (req, res) => {
+  const { name, email, project, message } = req.body;
+
+  try {
+    // 2. Save to Database first
+    const dbQuery = `
+      INSERT INTO client_inquiries (name, email, project_tier, message)
+      VALUES ($1, $2, $3, $4) RETURNING id;
+    `;
+    await pool.query(dbQuery, [name, email, project, message]);
+
+    // 3. Send Email via Resend
+    const { data, error } = await resend.emails.send({
+       from: 'YeilvaStore <admin@email.yeilvastore.com>',// Use your verified domain here later
+      to: 'bonz.ba50@gmail.com', // Where you get the notification
+      subject: `New Lead: ${name} is interested in ${project}`,
+      html: `
+        <h1>New Project Inquiry</h1>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Tier:</strong> ${project}</p>
+        <p><strong>Message:</strong> ${message}</p>
+        <hr />
+        <p>This lead has been saved to your YeilvaStore database.</p>
+      `,
+    });
+
+    if (error) {
+      return res.status(400).json({ error });
+    }
+
+    res.status(200).json({ message: 'Inquiry saved and email sent!' });
+  } catch (err) {
+    console.error('Server Error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Add this to your routes file (e.g., routes/admin.js)
+app.get('/api/admin/inquiries', async (req, res) => {
+  try {
+    // We sort by 'id' descending so the newest leads appear at the top
+    const result = await pool.query('SELECT * FROM client_inquiries ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Server Error');
+  }
+});
+
+// Mark as Contacted (Update)
+app.patch('/api/admin/inquiries/:id/contacted', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('UPDATE client_inquiries SET status = $1 WHERE id = $2', ['contacted', id]);
+    res.json({ message: 'Lead updated' });
+  } catch (err) {
+    res.status(500).send('Server Error');
+  }
+});
+
+// Delete Lead (Delete)
+app.delete('/api/admin/inquiries/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await pool.query('DELETE FROM client_inquiries WHERE id = $1', [id]);
+    res.json({ message: 'Lead deleted' });
+  } catch (err) {
+    res.status(500).send('Server Error');
+  }
+});
+
+
 const PORT = process.env.PORT || 3001;
 // ✅ CORRECT: Use the 'server' variable, which is the http.createServer(app) 
 // instance that the Socket.IO server 'io' is attached to.
