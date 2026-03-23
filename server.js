@@ -685,6 +685,147 @@ app.get('/confirm', async (req, res) => {
 });
 
 
+app.post('/resend-confirmation', confirmationLimiter, async (req, res) => {
+  const { email } = req.body;
+  
+  try {
+    // 1. Fetch user data
+    const user = await db('users').where({ email }).first();
+    
+    // Security Best Practice: Even if user isn't found, 
+    // some devs return "Success" to prevent email fishing. 
+    // But for your admin-heavy store, 404 is usually fine.
+    if (!user) return res.status(404).json({ error: "User not found" });
+    if (user.verified) return res.status(400).json({ error: "Email already verified" });
+
+    // 2. Generate and Store Token
+    const newToken = generateToken();
+    const firstname = user.firstname || 'Customer'; // Handle missing names
+    
+    await db('users').where({ email }).update({
+      token: newToken,
+      timestamp: new Date()
+    });
+
+    const verificationLink = `https://yeilvastore.com/confirm?token=${newToken}`;
+
+    // 3. Send response to Client IMMEDIATELY
+    res.json({ message: "Verification link sent!" });
+
+    // 4. Send Email in the background (no 'await' here)
+    resend.emails.send({
+      from: 'YeilvaStore <onboarding@email.yeilvastore.com>',
+      to: [email],
+    subject: 'Confirm Your Email Address',
+    html: `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>YeilvaStore Email Verification</title>
+            <style>
+                body {
+                    margin: 0;
+                    padding: 0;
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    color: #333333;
+                }
+                .container {
+                    max-width: 600px;
+                    margin: 20px auto;
+                    background-color: #ffffff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    border-top: 4px solid #007bff;
+                }
+                .header {
+                    text-align: center;
+                    padding-bottom: 20px;
+                    border-bottom: 1px solid #eaeaee;
+                }
+                .header img {
+                    max-width: 150px;
+                    height: auto;
+                }
+                .content {
+                    padding: 20px 0;
+                    line-height: 1.6;
+                    text-align: center;
+                }
+                .content p {
+                    font-size: 16px;
+                    margin: 0 0 15px;
+                }
+                .button-container {
+                    text-align: center;
+                    padding: 20px 0;
+                }
+                .button {
+                    display: inline-block;
+                    padding: 12px 24px;
+                    font-size: 16px;
+                    color: #ffffff;
+                    background-color: #007bff;
+                    border-radius: 5px;
+                    text-decoration: none;
+                    font-weight: bold;
+                }
+                .footer {
+                    text-align: center;
+                    padding-top: 20px;
+                    border-top: 1px solid #eaeaee;
+                    font-size: 12px;
+                    color: #777777;
+                }
+                .footer a {
+                    color: #007bff;
+                    text-decoration: none;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">
+                        <img src="https://yeilvastore.com/logo.png" alt="YeilvaStore Logo">
+                    </a>
+                </div>
+                <div class="content">
+                    <p><strong>Hi ${firstname},</strong></p>
+                    <p>Thanks for signing up for an account with YeilvaStore!</p>
+                    <p>To complete your registration, please click the button below to verify your email address:</p>
+                    <div class="button-container">
+                        <a href="${verificationLink}" class="button">Verify Email Address</a>
+                    </div>
+                    <p>If the button doesn't work, you can also copy and paste the following link into your browser:</p>
+                    <p><a href="${verificationLink}" style="font-size: 12px; color: #007bff;">${verificationLink}</a></p>
+                </div>
+                <div class="footer">
+                    <p>If you have any questions, reply to this email.</p>
+                    <p>&copy; ${new Date().getFullYear()} YeilvaStore. All rights reserved.</p>
+                    <p>
+                        <a href="https://yeilvastore.com" target="_blank" rel="noopener noreferrer">Visit Our Website</a>
+                    </p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `
+}).catch(emailErr => {
+      console.error("Resend background error:", emailErr);
+      // Optional: Log this to a 'failed_emails' table in PostgreSQL
+    });
+
+  } catch (err) {
+    console.error("Database or Server Error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
 
 const cleanNumericValue = (value) => {
   // Remove any non-numeric characters except decimal points
