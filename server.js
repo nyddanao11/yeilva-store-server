@@ -634,39 +634,56 @@ try {
 });
 
 
-// Endpoint for handling email confirmation
 app.get('/confirm', async (req, res) => {
   const { token } = req.query;
 
   try {
-    // Check if the token exists and is not expired in the PostgreSQL database
+    // 1. Validate Token
     const result = await db('users')
       .where({ token: token })
-      .andWhere('timestamp', '>', new Date(Date.now() - (24 * 60 * 60 * 1000))) // Check tokens valid for 24 hours
+      .andWhere('timestamp', '>', new Date(Date.now() - (24 * 60 * 60 * 1000)));
 
     if (result.length === 0) {
       return res.status(400).json({ error: 'Invalid or expired token' });
     }
 
-    // Mark the user's email as verified in the PostgreSQL database
-    const email = result[0].email;
+    const userEmail = result[0].email;
+
+    // 2. Mark verified and clear token in one go
     await db('users')
-      .where({ email: email })
-      .update({ verified: true });
+      .where({ email: userEmail })
+      .update({ 
+        verified: true, 
+        token: null 
+      });
 
-    // Optionally, you can delete the token from the database to prevent reuse
-      const deleteResult = await pool.query(
-      'UPDATE users SET token = NULL WHERE email = $1',
-      [result[0].email]  // Use result[0].email instead of result.rows[0].email
-    );
-
+    // 3. Send Notification to Admin (Fire and Forget)
+    // We don't 'await' this to keep the response fast for the user
+    resend.emails.send({
+     from: 'YeilvaStore <noreply@email.yeilvastore.com>',
+     to: ['bonz.ba50@gmail.com'],
+      subject: `🚀 New Verified User: ${userEmail}`,
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee;">
+          <h2 style="color: #2e7d32;">Email Confirmation Success</h2>
+          <p>A user has successfully verified their account on the platform.</p>
+          <hr />
+          <p><strong>User:</strong> ${userEmail}</p>
+          <p><strong>Verified At:</strong> ${new Date().toLocaleString('en-PH')}</p>
+          <hr />
+          <p style="font-size: 12px; color: #666;">Automated notification from your backend.</p>
+        </div>
+      `
+    }).catch(err => console.error("Resend Notification Error:", err));
 
     res.json({ message: 'Email verified successfully' });
+
   } catch (error) {
     console.error('Error during email confirmation', error);
     res.status(500).json('An error occurred during email confirmation');
   }
 });
+
 
 
 const cleanNumericValue = (value) => {
@@ -3737,6 +3754,31 @@ app.delete('/api/admin/inquiries/:id', async (req, res) => {
     res.json({ message: 'Lead deleted' });
   } catch (err) {
     res.status(500).send('Server Error');
+  }
+});
+
+// Get all products
+app.get('/api/products', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM products ORDER BY id DESC');
+    res.json(result.rows);
+    console.log('inventory', result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Add a new product
+app.post('/api/products', async (req, res) => {
+  const { name, price, stock, category } = req.body;
+  try {
+    const result = await pool.query(
+      'INSERT INTO products (name, price, stock_quantity, category) VALUES ($1, $2, $3, $4) RETURNING *',
+      [name, price, stock, category]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
