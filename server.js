@@ -40,7 +40,7 @@ const { Sequelize, DataTypes, Op } = require('sequelize');
 const sequelize = new Sequelize(
   `postgres://${process.env.POSTGRES_USER}:${process.env.POSTGRES_PASSWORD}@${process.env.RAILWAY_TCP_PROXY_DOMAIN}:${process.env.RAILWAY_TCP_PROXY_PORT}/${process.env.POSTGRES_DB}`
 );
-
+const RecaptchaKey = process.env.RECAPTCHA_SECRET_KEY;
 const rateLimit = require('express-rate-limit');
 
 // Define the limiter
@@ -3828,30 +3828,39 @@ app.post('/create-checkout-session', async (req, res) => {
 
 
 app.post('/api/contact', async (req, res) => {
-  const { name, email, project, message } = req.body;
+  const { name, email, project, message, captchaToken } = req.body;
 
   try {
-    // CHECK FOR DUPLICATE EMAIL
+    // 1. Verify reCAPTCHA with Google
+    const verificationUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${RecaptchaKey}&response=${captchaToken}`;
+    const verifyRes = await fetch(verificationUrl, { method: 'POST' });
+    const verifyData = await verifyRes.json();
+
+    if (!verifyData.success) {
+      return res.status(400).json({ message: "reCAPTCHA verification failed. Are you a bot?" });
+    }
+
+    // 2. CHECK FOR DUPLICATE EMAIL
     const checkUser = await pool.query(
       'SELECT * FROM client_inquiries WHERE email = $1', 
       [email]
     );
 
     if (checkUser.rows.length > 0) {
-      // Return 409 Conflict if email exists
       return res.status(409).json({ message: 'Email already exists' });
     }
-    // 2. Save to Database first
+
+    // 3. Save to Database
     const dbQuery = `
       INSERT INTO client_inquiries (name, email, project_tier, message)
       VALUES ($1, $2, $3, $4) RETURNING id;
     `;
     await pool.query(dbQuery, [name, email, project, message]);
 
-    // 3. Send Email via Resend
-    const { data, error } = await resend.emails.send({
-       from: 'YeilvaStore <admin@email.yeilvastore.com>',// Use your verified domain here later
-      to: 'bonz.ba50@gmail.com', // Where you get the notification
+    // 4. Send Email via Resend
+    const { error } = await resend.emails.send({
+      from: 'YeilvaStore <admin@email.yeilvastore.com>',
+      to: 'bonz.ba50@gmail.com',
       subject: `New Lead: ${name} is interested in ${project}`,
       html: `
         <h1>New Project Inquiry</h1>
@@ -3865,13 +3874,16 @@ app.post('/api/contact', async (req, res) => {
     });
 
     if (error) {
-      return res.status(400).json({ error });
+      // We log the error but the lead is already saved in DB
+      console.error('Resend Error:', error);
+      return res.status(200).json({ message: 'Inquiry saved, but email notification failed.' });
     }
 
-    res.status(200).json({ message: 'Inquiry saved and email sent!' });
+    return res.status(200).json({ message: 'Inquiry saved and email sent!' });
+
   } catch (err) {
     console.error('Server Error:', err);
-    res.status(500).json({ error: 'Internal Server Error' });
+    return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
