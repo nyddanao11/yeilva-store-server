@@ -164,22 +164,41 @@ app.get('/', (req, res) => {
 
 
 app.post('/signin', async (req, res) => {
-    const { email, password } = req.body;
+    // 1. Destructure captchaToken from the request body
+    const { email, password, captchaToken } = req.body;
+
+    // --- RECAPTCHA VERIFICATION (The "Gatekeeper") ---
+    if (!captchaToken) {
+        return res.status(400).json({ error: 'Please complete the reCAPTCHA.' });
+    }
 
     try {
+        const secretKey = process.env.RECAPTCHA_SECRET_KEY; // Your v2 Secret Key
+        const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${captchaToken}`;
+
+        const verifyRes = await fetch(verifyUrl, { method: 'POST' });
+        const verifyData = await verifyRes.json();
+
+        if (!verifyData.success) {
+            return res.status(400).json({ error: 'reCAPTCHA verification failed. Please try again.' });
+        }
+
+        // --- DATABASE LOGIC (Existing) ---
         const userData = await db('users')
             .select('email', 'password', 'verified', 'status', 'login_attempts', 'last_login_attempt', 'lockout_until')
             .where('email', '=', email)
             .first();
 
+        // If user doesn't exist, we return generic error
         if (!userData) {
             return res.status(400).json({ error: 'Invalid credentials' });
         }
 
         // --- Pre-Auth Checks ---
         if (!userData.verified) {
-            return res.status(400).json({ error: 'Email not verified. Please check your email for verification instructions.' });
+            return res.status(400).json({ error: 'Email not verified.' });
         }
+        
         if (userData.status !== 'active') {
             return res.status(400).json({ error: 'Account deactivated' });
         }
@@ -189,8 +208,9 @@ app.post('/signin', async (req, res) => {
 
         // Check if the lockout period is still active
         if (lockoutUntil && currentDateTime < new Date(lockoutUntil)) {
+            const minutesLeft = Math.ceil((new Date(lockoutUntil) - currentDateTime) / (60 * 1000));
             return res.status(400).json({
-                error: `Account locked. Please try again after ${Math.ceil((new Date(lockoutUntil) - currentDateTime) / (60 * 1000))} minutes.`,
+                error: `Account locked. Please try again after ${minutesLeft} minutes.`,
             });
         }
         
@@ -198,52 +218,38 @@ app.post('/signin', async (req, res) => {
         const isValid = bcrypt.compareSync(password, userData.password);
 
         if (isValid) {
-            // ------------------------------------------------------------------
-            // SUCCESSFUL LOGIN: ONLY ISSUE TOKENS HERE
-            // ------------------------------------------------------------------
-            
-            // 1. Reset login attempts on successful login
+            // SUCCESSFUL LOGIN logic...
             await db('users').where('email', '=', email).update({ 
                 login_attempts: 0, 
                 last_login_attempt: currentDateTime, 
                 lockout_until: null 
             });
 
-            // 2. Generate SHORT-LIVED ACCESS TOKEN (15 minutes)
             const accessToken = jwt.sign({ email: userData.email }, JWT_SECRET, { expiresIn: '15m' });
-
-            // 3. Generate LONG-LIVED REFRESH TOKEN (7 days)
             const refreshToken = jwt.sign({ email: userData.email }, REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
-          
-            // 4. Set the Refresh Token in an HTTP-ONLY, SECURE cookie
+
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true, 
-                secure: true,
-                sameSite: 'none',
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
                 maxAge: 7 * 24 * 60 * 60 * 1000, 
-              
             });
 
-            // 5. Send the short-lived ACCESS TOKEN back in the response body
             return res.json({ status: 'success', token: accessToken });
             
         } else {
-            // ------------------------------------------------------------------
-            // FAILED LOGIN: Handle attempts and potential lockout
-            // ------------------------------------------------------------------
+            // FAILED LOGIN logic (Attempts and Lockout)...
             const loginAttempts = userData.login_attempts + 1;
             
             if (loginAttempts < 3) {
-                // If less than three attempts, update the login attempts
                 await db('users').where('email', '=', email).update({
                     login_attempts: loginAttempts,
                     last_login_attempt: currentDateTime,
                 });
                 return res.status(400).json({
-                    error: `Invalid credentials. Login attempt ${loginAttempts}/3.`,
+                    error: `Invalid credentials. Attempt ${loginAttempts}/3.`,
                 });
             } else {
-                // If the third attempt, set lockout
                 const lockoutTime = 15 * 60 * 1000; 
                 lockoutUntil = new Date(currentDateTime.getTime() + lockoutTime);
 
@@ -254,7 +260,7 @@ app.post('/signin', async (req, res) => {
                 });
 
                 return res.status(400).json({
-                    error: `Invalid credentials. Login attempt ${loginAttempts}/3. Account locked for ${Math.ceil(lockoutTime / (60 * 1000))} minutes.`,
+                    error: `Invalid credentials. Attempt 3/3. Account locked for 15 minutes.`,
                 });
             }
         }
@@ -263,7 +269,6 @@ app.post('/signin', async (req, res) => {
         return res.status(500).json({ error: 'An error occurred during login' });
     }
 });
-
 
 
 // --- MIDDLEWARE FOR ACCESS TOKEN AUTHENTICATION ---
