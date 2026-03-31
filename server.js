@@ -6,6 +6,7 @@ const cors = require('cors');
 const knex = require('knex');
 const http = require('http');
 const { Server } = require("socket.io");
+const { createProxyMiddleware } = require('http-proxy-middleware');
 const cron = require('node-cron');
 const nodemailer = require('nodemailer');
 const { Resend } = require('resend');
@@ -91,6 +92,20 @@ const s3 = new S3Client({
 
 
 const app = express();
+
+// 1. PLACE PROXY FIRST (Before body-parser/json middleware)
+app.use('/shop', createProxyMiddleware({
+    target: 'docker-image-production-e179.up.railway.app', // Your internal Railway URL
+    changeOrigin: true,
+    pathRewrite: {
+        '^/shop': '', // This removes /shop so WordPress doesn't get confused
+    },
+    // This part is vital for AliDropship & WordPress cookies to work
+    onProxyRes: function (proxyRes, req, res) {
+        proxyRes.headers['Access-Control-Allow-Origin'] = '*';
+    }
+}));
+
 const router = express.Router();
 app.use(express.json());
 
