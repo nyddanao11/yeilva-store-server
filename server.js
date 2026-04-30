@@ -1,3 +1,4 @@
+require('dotenv').config(); // 👈 THIS MUST BE LINE #1
 const express = require('express');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
@@ -17,6 +18,7 @@ const { GetObjectCommand } = require('@aws-sdk/client-s3');
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const { fromEnv } = require("@aws-sdk/credential-provider-env");
 const { S3 } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const multer = require('multer');
 const multerS3 = require('multer-s3');
 const storage = multer.memoryStorage(); // Use memory storage to get the buffer
@@ -35,7 +37,6 @@ const checkAuthRouter = require('./Routes/checkAuth');
 require('dotenv').config({ path: 'paymongo.env' });
 require('dotenv').config({ path: 'tokensecret.env' });
 require('dotenv').config({ path: 's3.env' });
-require('dotenv').config();
 const { Sequelize, DataTypes, Op } = require('sequelize');
 
 const sequelize = new Sequelize(
@@ -81,30 +82,42 @@ const BucketName = process.env.BUCKET_NAME;
 
 
 
-const s3 = new S3Client({
-  region: bucketRegion,
+// const s3 = new S3Client({
+//   region: bucketRegion,
+//   credentials: {
+//     accessKeyId: AccessKey,
+//     secretAccessKey: SecretKey,
+//   },
+// });
+
+// Your S3 Client Configuration
+const s3Client = new S3Client({
+  region: process.env.AWS_REGION,
   credentials: {
-    accessKeyId: AccessKey,
-    secretAccessKey: SecretKey,
+    accessKeyId: process.env.AWS_ACCESS_KEY,
+    secretAccessKey: process.env.AWS_SECRET_KEY,
   },
 });
+
+const generateDownloadLink = async (fileKey) => {
+  try {
+    if (!fileKey) return null; // Prevent errors if DB row is empty
+
+    const command = new GetObjectCommand({
+      Bucket: process.env.S3_BUCKET_NAME,
+      Key: fileKey,
+    });
+
+    return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+  } catch (error) {
+    console.error("S3 Signed URL Error:", error);
+    return null; // Return null so your frontend knows there is no link
+  }
+};
 
 
 
 const app = express();
-
-// 1. PLACE PROXY FIRST (Before body-parser/json middleware)
-app.use('/shop', createProxyMiddleware({
-    target: 'docker-image-production-e179.up.railway.app', // Your internal Railway URL
-    changeOrigin: true,
-    pathRewrite: {
-        '^/shop': '', // This removes /shop so WordPress doesn't get confused
-    },
-    // This part is vital for AliDropship & WordPress cookies to work
-    onProxyRes: function (proxyRes, req, res) {
-        proxyRes.headers['Access-Control-Allow-Origin'] = '*';
-    }
-}));
 
 const router = express.Router();
 app.use(express.json());
@@ -171,6 +184,16 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 //     rejectUnauthorized: false // optional, helps with self-signed certs
 //   }
 // });
+
+
+const PAYPAL_API = process.env.NODE_ENV === 'production' 
+  ? "https://api-m.paypal.com" 
+  : "https://api-m.sandbox.paypal.com";
+
+const PaypalClientId = process.env.REACT_APP_PAYPAL_CLIENT_SANDBOX;
+const PaypalSecret = process.env.REACT_APP_PAYPAL_CLIENT_SECRET_SANDBOX;
+
+
 
 // Routes
 app.get('/', (req, res) => {
@@ -1295,6 +1318,340 @@ function generateOrderNumber() {
   const orderNumber = `${timestamp}-${randomPart}`;
   return orderNumber;
 }
+
+
+const authenticateToken = (req, res, next) => {
+  // 1. Try to get the token from the cookie first
+  let token = req.cookies.refreshToken;
+
+  // 2. Backup: Check the Authorization header (optional, but good practice)
+  if (!token) {
+    const authHeader = req.headers['authorization'];
+    token = authHeader && authHeader.split(' ')[1];
+  }
+
+  // Debugging: This will now show your cookie value instead of 'undefined'
+  console.log("Token being verified:", token ? "Token Found" : "No Token Found");
+
+  // 3. If NO token is found in either place, deny access
+  if (!token) {
+    return res.status(401).json({ error: "Access denied. No token provided." });
+  }
+
+  // 4. Verify the token (Ensure your secret matches the one used to sign the refreshToken)
+  jwt.verify(token, REFRESH_TOKEN_SECRET, (err, user) => {
+    if (err) {
+      console.error("JWT Verification Error:", err.message);
+      return res.status(403).json({ error: "Invalid or expired token." });
+    }
+    
+    // 5. Attach the user data to the request so your SQL query can use req.user.id
+    req.user = user; 
+    next();
+  });
+};
+
+async function generateAccessToken() {
+  const response = await axios({
+    url: "https://api-m.paypal.com/v1/oauth2/token",
+    method: "post",
+    auth: {
+      username: PaypalClientId,
+      password: PaypalSecret,
+    },
+    data: "grant_type=client_credentials",
+  });
+
+  return response.data.access_token;
+}
+
+app.post("/api/paypal/create-order", authenticateToken, async (req, res) => {
+  try {
+    // 1. Get the data from the frontend request
+    // Ensure your frontend sends { amount: total_value, shipping: shipping_value }
+    const { amount, shipping, discount} = req.body;
+
+    // 2. Validate the input
+    if (!amount || isNaN(amount)) {
+      return res.status(400).json({ error: "Invalid amount provided" });
+    }
+
+    // 3. Calculate total (Force them to be numbers to avoid string concatenation)
+    // If shipping is not provided, default to 0
+    const shippingFee = shipping ? Number(shipping) : 0;
+    const totalAmount = (Number(amount) + shippingFee - discount).toFixed(2) ;
+
+    // console.log(`🛒 Creating Order: Subtotal ${amount} + Shipping ${shippingFee} = ${totalAmount}`);
+
+    // 4. Get PayPal Access Token
+    const accessToken = await generateAccessToken();
+
+    // 5. Create the Order via Axios
+    const response = await axios.post(
+     "https://api-m.paypal.com/v2/checkout/orders",
+      {
+        intent: "CAPTURE",
+        purchase_units: [
+          {
+            amount: {
+              currency_code: "PHP",
+              value: totalAmount, // This is the sum of subtotal + shipping
+            },
+            description: "YeilvaStore Purchase",
+          },
+        ],
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // 6. Return the ID to React
+    res.json({ id: response.data.id });
+
+  } catch (error) {
+    console.error("❌ PayPal API Error:", error.response?.data || error.message);
+    res.status(500).json({ 
+      error: "Failed to create PayPal order",
+      details: error.response?.data?.message || "Internal Server Error"
+    });
+  }
+});
+
+
+
+// 1. MOVE TEMPLATES OUTSIDE THE ROUTE (To keep the route clean and avoid scope errors)
+const customerEmailTemplate = (payerName, orderId, amount, items, downloadLinks) => `
+  <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px; color: #333;">
+    <h2 style="color: #E92409; text-align: center;">Order Confirmed!</h2>
+    <p>Hi ${payerName},</p>
+    <p>Thank you for your purchase! Your digital product is ready for download below.</p>
+
+    ${downloadLinks ? `
+    <div style="margin: 30px 0; text-align: center; padding: 20px; background: #fff8f7; border: 2px dashed #E92409; border-radius: 10px;">
+      <h3 style="margin-top: 0;">Your Ebook is Ready</h3>
+      <p style="font-size: 14px; color: #666;">Click the button below to access your copy of <strong>The £500 Side Hustle Plan</strong>.</p>
+      <a href="${downloadLinks}" 
+         style="display: inline-block; padding: 15px 25px; background-color: #E92409; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; margin-top: 10px;">
+         📥 Download Ebook Now
+      </a>
+      <p style="font-size: 12px; color: #999; margin-top: 15px;">Note: For security, this link will expire in 1 hour.</p>
+    </div>
+    ` : ''}
+
+    <div style="background: #f9f9f9; padding: 15px; border-radius: 8px;">
+      <p><strong>Order ID:</strong> ${orderId}</p>
+      <p><strong>Total Paid:</strong> ₱${amount}</p>
+    </div>
+
+    <h3>Order Summary:</h3>
+    <table style="width: 100%; border-collapse: collapse;">
+     ${(items || []).map(item => `
+          <tr>
+            <td style="padding: 8px 0; border-bottom: 1px solid #eee;">${item.name} x ${item.quantity}</td>
+            <td style="padding: 8px 0; border-bottom: 1px solid #eee; text-align: right;">₱${(Number(item.price || 0) * (item.quantity || 1)).toFixed(2)}</td>
+          </tr>
+        `).join('')}
+    </table>
+
+    <p style="margin-top: 20px;">If you have any trouble downloading your file, just reply to this email and we'll help you out!</p>
+    <p>Best regards,<br/><strong>The YeilvaStore Team</strong></p>
+  </div>
+`;
+
+const adminEmailTemplate = (payerName, amount, items, shippingAddress = null) => `
+  <div style="font-family: sans-serif; color: #333;">
+    <h2 style="color: #2c3e50;">🚀 New Order Received!</h2>
+    <p><strong>Customer Name:</strong> ${payerName}</p>
+    <p><strong>Total Revenue:</strong> ₱${amount}</p>
+    
+    <hr />
+    
+    <h3>Order Details:</h3>
+    <ul>
+      ${items.map(item => `
+        <li style="margin-bottom: 10px;">
+          <strong>${item.name}</strong> (Qty: ${item.quantity})<br/>
+          <small style="color: #666;">Category: ${item.category || 'Standard'}</small>
+        </li>
+      `).join('')}
+    </ul>
+
+    ${shippingAddress ? `
+      <div style="background: #f4f4f4; padding: 15px; border-radius: 5px; margin-top: 20px;">
+        <h4 style="margin-top: 0;">📦 Shipping Information:</h4>
+        <p style="margin-bottom: 0;">
+          ${shippingAddress.recipient_name}<br/>
+          ${shippingAddress.address_line_1}<br/>
+          ${shippingAddress.admin_area_2}, ${shippingAddress.postal_code}<br/>
+          Philippines
+        </p>
+      </div>
+    ` : `
+      <p style="color: #e67e22;"><strong>Note:</strong> This appears to be a Digital-Only order. No shipping required.</p>
+    `}
+    
+    <p style="margin-top: 30px; font-size: 12px; color: #999;">
+      Sent automatically by YeilvaStore Backend.
+    </p>
+  </div>
+`;
+
+app.post("/api/paypal/capture-order", authenticateToken, async (req, res) => {
+  const { orderID, items } = req.body; 
+  console.log("📦 Step 1: Items received:", items);
+
+  const client = await pool.connect();
+ let downloadLinks = []; // 🟢 Declare outside so it's accessible later
+  let deletedCartItemIds = []; // Initialize here
+
+  try {
+    const accessToken = await generateAccessToken();
+    const response = await axios.post(
+    `https://api-m.paypal.com/v2/checkout/orders/${orderID}/capture`,
+      {},
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    const data = response.data;
+    const capture = data.purchase_units[0].payments.captures[0];
+    const amount = capture.amount.value;
+    const payerEmail = data.payer.email_address;
+    const payerName = `${data.payer.name.given_name} ${data.payer.name.surname}`;
+
+    await client.query('BEGIN');
+
+    // 2. Insert into ORDERS
+    const orderResult = await client.query(
+      `INSERT INTO orders 
+      (user_id, paypal_order_id, payer_email, payer_name, amount, currency, status, payment_method)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [req.user.id, orderID, payerEmail, payerName, amount, capture.amount.currency_code, data.status, "paypal"]
+    );
+    
+    const newOrderId = orderResult.rows[0].id;
+    console.log("✅ Step 2: Order saved with ID:", newOrderId);
+
+    // 3. Insert into ORDER_ITEMS
+    for (const item of items) {
+      await client.query(
+        `INSERT INTO order_items (order_id, product_name, price, quantity)
+         VALUES ($1, $2, $3, $4)`,
+        [newOrderId, item.name || item.product_name, Number(item.price), item.quantity]
+      );
+    }
+
+   // 1. Get the list of product IDs from the items sent by the frontend
+const productIdsToClear = items.map(item => item.id || item.product_id);
+
+// 2. Delete ONLY those specific products for THIS user
+const cartCleanup = await client.query(
+    `DELETE FROM cart_items 
+     WHERE user_id = $1 AND product_id = ANY($2::int[]) 
+     RETURNING product_id`, 
+    [req.user.id, productIdsToClear]
+);
+
+// 3. Map the returned IDs so the frontend knows what to remove from the UI
+const deletedCartItemIds = cartCleanup.rows.map(row => row.product_id);
+
+await client.query('COMMIT');
+console.log("✅ Database transactions complete. Items cleared:", deletedCartItemIds);
+    // --- ASYNC LOGIC (S3 & EMAIL) ---
+
+   // 5. Generate S3 Link
+const productIds = items.map(item => item.id || item.product_id);
+
+
+try {
+  // Step 1: Find the s3_keys for the purchased items
+  const { rows } = await client.query(
+    `SELECT s3_key, name 
+     FROM products 
+     WHERE id = ANY($1) AND s3_key IS NOT NULL`,
+    [productIds] 
+  );
+
+  // Step 2: Generate links for each digital item found
+  downloadLinks = await Promise.all(
+    rows.map(async (row) => ({
+      name: row.name,
+      url: await generateDownloadLink(row.s3_key)
+    }))
+  );
+} catch (s3Error) {
+  console.error("❌ S3 Link Error:", s3Error);
+  // Optional: You might want to still let the payment succeed 
+  // but log this so you can manually email the link if S3 fails.
+}
+
+    // 6. Send Email via Resend
+    try {
+
+
+    // 2. Extract the shipping address safely
+const shipping = capture.purchase_units?.[0]?.shipping?.address || null;
+
+// Generate Customer Email Content
+const emailHtml = customerEmailTemplate(
+    payerName, 
+    orderID, 
+    amount, 
+    items, 
+    downloadLinks,
+    shipping
+);
+
+// Generate Admin Email Content
+const adminEmailHtml = adminEmailTemplate(
+    payerName, 
+    amount, 
+    items, 
+    shipping
+);
+
+/// 📧 SEND TO CUSTOMER
+await resend.emails.send({
+    from: 'YeilvaStore <admin@email.yeilvastore.com>',
+    to: payerEmail, 
+    // Use backticks and check if a link exists to avoid errors
+    subject: `Your Download: ${downloadLinks.length > 0 ? downloadLinks[0].name : 'Order Confirmation'}`,
+    html: emailHtml,
+});
+
+// 📧 SEND TO ADMIN (YOU)
+await resend.emails.send({
+    from: 'YeilvaStore <admin@email.yeilvastore.com>',
+    to: 'yeilvastore@gmail.com', // ✅ Wrap in quotes!
+    subject: `🚀 New Order Alert: ${payerName}`, // ✅ Better subject for admin
+    html: adminEmailHtml,
+});
+
+console.log("📧 Emails sent to Customer and Admin!");
+    } catch (emailErr) {
+      console.error("❌ Email Error:", emailErr);
+    }
+
+console.log("Links generated:", downloadLinks); // 🔍 Check your terminal for this!    // FINAL RESPONSE
+
+    return res.status(200).json({
+      success: true,
+      deletedCartItemIds: deletedCartItemIds,
+      downloadLinks: downloadLinks
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK'); // 🟢 Important: Undo DB changes if PayPal fails
+    console.error("❌ CRITICAL ERROR IN CAPTURE:", error.message);
+    res.status(500).json({ success: false, error: error.message });
+  } finally {
+    client.release(); // 🟢 Important: Release connection back to the pool
+  }
+});
+
 
 // Example route to create a new order
 app.post('/create-order', async (req, res) => {
