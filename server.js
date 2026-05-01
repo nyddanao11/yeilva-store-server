@@ -190,9 +190,9 @@ const PAYPAL_API = process.env.NODE_ENV === 'production'
   ? "https://api-m.paypal.com" 
   : "https://api-m.sandbox.paypal.com";
 
-const PaypalClientId = process.env.REACT_APP_PAYPAL_CLIENT_SANDBOX;
-const PaypalSecret = process.env.REACT_APP_PAYPAL_CLIENT_SECRET_SANDBOX;
 
+const PaypalClientId = process.env.PAYPAL_CLIENT_ID;
+const PaypalSecret = process.env.PAYPAL_SECRET_KEY; // No 'REACT_APP_' prefix
 
 
 // Routes
