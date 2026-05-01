@@ -169,7 +169,6 @@ app.use('/api/check-auth', checkAuthRouter);
 // A secret key for signing your JWTs. Keep this in a secure environment variable.
 const JWT_SECRET = process.env.ACCESS_TOKEN_SECRET_LOGIN || 'your-super-secret-key'; 
 const REFRESH_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET_REFRESH || 'your-super-secret-key'; 
-
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // const transporter = nodemailer.createTransport({
@@ -223,7 +222,7 @@ app.post('/signin', async (req, res) => {
 
         // --- DATABASE LOGIC (Existing) ---
         const userData = await db('users')
-            .select('email', 'password', 'verified', 'status', 'login_attempts', 'last_login_attempt', 'lockout_until')
+            .select('user_id','email', 'password', 'verified', 'status', 'login_attempts', 'last_login_attempt', 'lockout_until')
             .where('email', '=', email)
             .first();
 
@@ -264,7 +263,7 @@ app.post('/signin', async (req, res) => {
             });
 
             const accessToken = jwt.sign({ email: userData.email }, JWT_SECRET, { expiresIn: '15m' });
-            const refreshToken = jwt.sign({ email: userData.email }, REFRESH_TOKEN_SECRET, { expiresIn: '7d' });
+          const refreshToken = jwt.sign({ id: userData.user_id, email: userData.email },REFRESH_TOKEN_SECRET,{ expiresIn: '7d' });
 
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true, 
@@ -349,6 +348,7 @@ const authenticateAccessToken = async (req, res, next) => {
         return res.status(403).json({ error: "Invalid or expired access token." });
     }
 };
+
 
 // ... (Keep all existing code above this point, including the signin and refresh endpoints)
 
