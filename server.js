@@ -116,11 +116,11 @@ const generateDownloadLink = async (fileKey) => {
 };
 
 
-
 const app = express();
 
+app.use(cookieParser());
+
 const router = express.Router();
-app.use(express.json());
 
 
 // Middleware
@@ -138,6 +138,7 @@ app.use(cors({
   credentials: true,
 }));
 
+app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -147,7 +148,6 @@ const io = new Server(server, {
   }
 });
 
-app.use(cookieParser());
 
 const allowedOrigins = ['https://yeilvastore.com', 'https://www.yeilvastore.com'];
 
