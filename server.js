@@ -1422,7 +1422,6 @@ app.post("/api/paypal/create-order", authenticateToken, async (req, res) => {
 });
 
 
-
 // 1. MOVE TEMPLATES OUTSIDE THE ROUTE (To keep the route clean and avoid scope errors)
 const customerEmailTemplate = (payerName, orderId, amount, items, downloadLinks) => `
   <div style="font-family: sans-serif; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px; color: #333;">
@@ -1430,17 +1429,23 @@ const customerEmailTemplate = (payerName, orderId, amount, items, downloadLinks)
     <p>Hi ${payerName},</p>
     <p>Thank you for your purchase! Your digital product is ready for download below.</p>
 
-    ${downloadLinks ? `
-    <div style="margin: 30px 0; text-align: center; padding: 20px; background: #fff8f7; border: 2px dashed #E92409; border-radius: 10px;">
-      <h3 style="margin-top: 0;">Your Ebook is Ready</h3>
-      <p style="font-size: 14px; color: #666;">Click the button below to access your copy of <strong>The £500 Side Hustle Plan</strong>.</p>
-      <a href="${downloadLinks}" 
-         style="display: inline-block; padding: 15px 25px; background-color: #E92409; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; margin-top: 10px;">
-         📥 Download Ebook Now
-      </a>
-      <p style="font-size: 12px; color: #999; margin-top: 15px;">Note: For security, this link will expire in 1 hour.</p>
-    </div>
-    ` : ''}
+          
+        ${downloadLinks && downloadLinks.length > 0 ? `
+        <div style="margin: 30px 0; padding: 20px; background: #fff8f7; border: 2px dashed #E92409; border-radius: 10px;">
+          <h3 style="margin-top: 0; text-align: center;">Your Digital Downloads</h3>
+          ${downloadLinks.map(link => `
+            <div style="margin-bottom: 20px; text-align: center; border-bottom: 1px solid #ffe4e1; padding-bottom: 15px;">
+              <p style="font-size: 14px; color: #666; margin-bottom: 5px;">Access your copy of:</p>
+              <strong style="display: block; margin-bottom: 10px;">${link.name}</strong>
+              <a href="${link.url}" 
+                 style="display: inline-block; padding: 12px 20px; background-color: #E92409; color: #ffffff; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px;">
+                 📥 Download Now
+              </a>
+            </div>
+          `).join('')}
+          <p style="font-size: 12px; color: #999; text-align: center;">Note: For security, these links expire in 1 hour.</p>
+        </div>
+        ` : ''}
 
     <div style="background: #f9f9f9; padding: 15px; border-radius: 8px;">
       <p><strong>Order ID:</strong> ${orderId}</p>
@@ -1555,8 +1560,8 @@ const cartCleanup = await client.query(
     [req.user.id, productIdsToClear]
 );
 
-// 3. Map the returned IDs so the frontend knows what to remove from the UI
-const deletedCartItemIds = cartCleanup.rows.map(row => row.product_id);
+// // 3. Map the returned IDs so the frontend knows what to remove from the UI
+// const deletedCartItemIds = cartCleanup.rows.map(row => row.product_id);
 
 await client.query('COMMIT');
 console.log("✅ Database transactions complete. Items cleared:", deletedCartItemIds);
@@ -1651,7 +1656,6 @@ console.log("Links generated:", downloadLinks); // 🔍 Check your terminal for 
     client.release(); // 🟢 Important: Release connection back to the pool
   }
 });
-
 
 // Example route to create a new order
 app.post('/create-order', async (req, res) => {
