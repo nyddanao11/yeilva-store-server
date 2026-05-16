@@ -4327,14 +4327,6 @@ app.post('/api/products', async (req, res) => {
   }
 });
 
-// 1. Serve your static production build folder
-app.use(express.static(path.join(__dirname, 'dist'))); // or 'build'
-
-// 2. The Catch-All Wildcard Route
-// This tells Express: If someone requests ANY page, send them index.html
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
 
 
 const PORT = process.env.PORT || 3001;
